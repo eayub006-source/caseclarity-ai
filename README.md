@@ -321,6 +321,7 @@ LLM_MODEL=gpt-4o-mini
 |---|---|---|---|
 | `DATABASE_URL` | Yes | — | PostgreSQL connection string used by the app and by `npm run db:push` |
 | `TRUST_PROXY` | No | off | **Set `true` on Vercel / behind nginx.** An attacker's IP is then blocked after 10 failed logins, before the always-on per-account cap (30 / 15 min) is reached. |
+| `TRUSTED_IP_HEADER` | No | `x-forwarded-for` | With `TRUST_PROXY=true`: the header your host overwrites with the client IP. Vercel: `x-vercel-forwarded-for`; Cloudflare: `cf-connecting-ip`; nginx: `x-real-ip` or `x-forwarded-for` (right-most hop). |
 | `DEMO_ACCOUNT` | No | on in development, **off in production** | `true` creates the demo account and fictional seed data. **Set `DEMO_ACCOUNT=true` on the judges' deployment.** |
 | `LLM_API_KEY` | No | *(empty)* | Enables LLM analysis; leave it empty to use Demo Mode |
 | `LLM_BASE_URL` | No | `https://api.openai.com/v1` | Base URL of an OpenAI-compatible API |

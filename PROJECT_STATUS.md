@@ -139,7 +139,7 @@ CaseClarity AI helps **legal-aid workers** handle client cases faster.
 | 1 | **Test the real AI with a real API key** | Only tested against a fake AI server so far. |
 | 2 | **Click through the whole app in a browser** | Code and APIs are tested, screens were not checked by hand after the fixes. |
 | 3 | **Merge `fix/known-issues` into `main`** | The fixes are on a separate branch. |
-| 4 | **Set `DEMO_ACCOUNT=true` and `TRUST_PROXY=true` on the judges' deployment** | Otherwise the demo login is off in production, and strangers could temporarily lock it with wrong passwords. |
+| 4 | **Set `DEMO_ACCOUNT=true`, `TRUST_PROXY=true` and `TRUSTED_IP_HEADER` (Vercel: `x-vercel-forwarded-for`) on the judges' deployment** | Otherwise the demo login is off in production, and strangers could temporarily lock it with wrong passwords. |
 | 5 | **Run `npm run db:push` + "Reset demo data" on existing databases** | New database columns were added. |
 
 ### 🟠 Medium priority (AI quality)

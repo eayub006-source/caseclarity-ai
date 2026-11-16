@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { normalizeRole, canManage } from "../src/lib/roles";
-import { hit, peek, reset, reserve, clientIp } from "../src/lib/rate-limit";
+import { hit, peek, reset, reserve, clientIp, trustedIpHeader } from "../src/lib/rate-limit";
 import { paginate, extractDocument } from "../src/lib/extract";
 import { toCSV, parseCasesCSV, buildCasesFromRows, normalizeDate } from "../src/lib/csv";
 
@@ -30,11 +30,21 @@ describe("rate limiter", () => {
     const slots = Array.from({ length: 5 }, () => reserve([[k1, 3], [k2, 100]], 1000, 0));
     expect(slots.filter((x) => x.allowed).length).toBe(3); // the 4th and 5th are refused immediately
     const first = slots[0];
-    if (first.allowed) { first.refund(); first.refund(); } // refund is idempotent
+    if (first.allowed) { first.refund(0); first.refund(0); } // refund is idempotent
     expect(reserve([[k1, 3]], 1000, 0).allowed).toBe(true);
     expect(reserve([[k1, 3]], 1000, 0).allowed).toBe(false);
     expect(peek(k2, 100, 0).allowed).toBe(true); // refused attempts did not leak onto k2
     reset(k1); reset(k2);
+  });
+
+  it("a late refund never reduces a newer window", () => {
+    const k = "w:" + Math.random();
+    const slot = reserve([[k, 5]], 1000, 0);           // counted in window [0, 1000)
+    for (let i = 0; i < 3; i++) hit(k, 5, 1000, 1500);   // new window from 1500: count 3
+    if (slot.allowed) slot.refund(1600);                // must not touch the new window
+    for (let i = 0; i < 2; i++) expect(hit(k, 5, 1000, 1600).allowed).toBe(true);
+    expect(hit(k, 5, 1000, 1600).allowed).toBe(false);  // 6th in the new window is refused
+    reset(k);
   });
 
   it("peek checks the limit without counting an attempt", () => {
@@ -50,13 +60,18 @@ describe("rate limiter", () => {
 describe("client IP for rate limiting", () => {
   const req = (h: Record<string, string>) => new Request("http://x/", { headers: h });
   it("ignores spoofable headers unless a trusted proxy is configured", () => {
-    expect(clientIp(req({ "x-forwarded-for": "1.2.3.4" }), false)).toBeNull();
+    expect(trustedIpHeader({})).toBeNull();
+    expect(clientIp(req({ "x-forwarded-for": "1.2.3.4" }), null)).toBeNull();
   });
-  it("uses the right-most X-Forwarded-For hop (added by our proxy) when trusted", () => {
-    expect(clientIp(req({ "x-forwarded-for": "6.6.6.6, 9.9.9.9" }), true)).toBe("9.9.9.9");
-    expect(clientIp(req({ "x-forwarded-for": "9.9.9.9", "x-real-ip": "6.6.6.6" }), true)).toBe("9.9.9.9");
-    expect(clientIp(req({ "x-real-ip": "5.5.5.5" }), true)).toBe("5.5.5.5");
-    expect(clientIp(req({}), true)).toBeNull();
+  it("reads only the configured header", () => {
+    expect(trustedIpHeader({ TRUST_PROXY: "true" })).toBe("x-forwarded-for");
+    expect(trustedIpHeader({ TRUST_PROXY: "true", TRUSTED_IP_HEADER: "X-Vercel-Forwarded-For" })).toBe("x-vercel-forwarded-for");
+    // x-forwarded-for: right-most hop (appended by our proxy)
+    expect(clientIp(req({ "x-forwarded-for": "6.6.6.6, 9.9.9.9" }), "x-forwarded-for")).toBe("9.9.9.9");
+    // a different configured header is used as-is, and never falls back
+    expect(clientIp(req({ "x-real-ip": "5.5.5.5", "x-forwarded-for": "6.6.6.6" }), "x-real-ip")).toBe("5.5.5.5");
+    expect(clientIp(req({ "x-forwarded-for": "6.6.6.6" }), "x-real-ip")).toBeNull();
+    expect(clientIp(req({}), "x-forwarded-for")).toBeNull();
   });
 });
 
