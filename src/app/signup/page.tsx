@@ -3,7 +3,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { User, Mail, Lock, Eye, EyeOff, ShieldCheck, ArrowLeft, Building2 } from "lucide-react";
-import { useStore } from "@/lib/store";
+import { useStore, errorMessage } from "@/lib/store";
 import { Logo } from "@/components/ui";
 
 export default function SignupPage() {
@@ -12,19 +12,21 @@ export default function SignupPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [org, setOrg] = useState("");
   const [show, setShow] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
+    // Must match MIN_PASSWORD_LENGTH in src/lib/password.ts (enforced on the server too).
+    if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
     setError(""); setLoading(true);
     try {
-      await signup(name, email, password);
+      await signup(name, email, password, org);
       router.push("/dashboard");
-    } catch {
-      setError("Could not create account. The email may already be registered.");
+    } catch (err) {
+      setError(errorMessage(err, "Could not create account."));
       setLoading(false);
     }
   };
@@ -63,7 +65,7 @@ export default function SignupPage() {
                 <button type="button" onClick={() => setShow(!show)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">{show ? <EyeOff size={16} /> : <Eye size={16} />}</button></div></label>
             <label className="block"><span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Organization (optional)</span>
               <div className="relative"><Building2 size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input className="w-full rounded-xl border border-slate-300 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" placeholder="Northside Legal Aid" /></div></label>
+                <input value={org} onChange={e => setOrg(e.target.value)} className="w-full rounded-xl border border-slate-300 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" placeholder="Northside Legal Aid" /></div></label>
             {error && <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{error}</div>}
             <button disabled={loading} className="w-full rounded-xl bg-[#0f2043] py-3 text-sm font-bold text-white shadow-md transition hover:bg-[#1e3a5f] disabled:opacity-60">{loading ? "Creating account…" : "Create Account"}</button>
             <p className="text-center text-[11px] leading-relaxed text-slate-400">By creating an account you agree this is a hackathon demo using fictional data. Do not upload real client documents.</p>

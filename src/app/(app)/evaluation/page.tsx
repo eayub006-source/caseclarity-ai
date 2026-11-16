@@ -1,16 +1,18 @@
 "use client";
 import { BarChart3, Info, FlaskConical, CheckCircle2 } from "lucide-react";
-import { Card, Badge, DemoBanner } from "@/components/ui";
+import { Card, Badge, AiModeBanner } from "@/components/ui";
+import { useStore } from "@/lib/store";
 import { EVALUATION } from "@/lib/core";
 
 export default function EvaluationPage() {
+  const { cases, docs, extractions, recs } = useStore();
   return (
     <div className="space-y-5 animate-fadeUp">
       <div>
         <h1 className="text-2xl font-extrabold tracking-tight text-[#0f2043]">Performance Evaluation</h1>
         <p className="mt-0.5 text-sm text-slate-500">How AI-assisted review compares to manual review — with honest labeling.</p>
       </div>
-      <DemoBanner />
+      <AiModeBanner />
       <div className="flex items-start gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-xs leading-relaxed text-blue-900">
         <Info size={15} className="mt-0.5 shrink-0" />
         <span><b>{EVALUATION.label}.</b> These figures are illustrative placeholders for the hackathon demo — they are <b>not</b> real-world results. The data structure below is designed to be replaced with actual testing results (e.g. from a timed user study with case workers).</span>
@@ -53,9 +55,9 @@ export default function EvaluationPage() {
 
       <Card className="p-5">
         <h2 className="flex items-center gap-2 text-sm font-extrabold text-[#0f2043]"><BarChart3 size={15} /> Current Workspace Totals</h2>
-        <p className="mt-1 text-xs text-slate-500">Live counts from your workspace (fictional demo data).</p>
+        <p className="mt-1 text-xs text-slate-500">Live counts from your workspace.</p>
         <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {[{ k: "Cases", v: "6" }, { k: "Documents", v: "15" }, { k: "Facts extracted", v: "20" }, { k: "Recommendations", v: "6" }].map(s => (
+          {[{ k: "Cases", v: String(cases.length) }, { k: "Documents", v: String(docs.length) }, { k: "Facts extracted", v: String(extractions.length) }, { k: "Recommendations", v: String(recs.length) }].map(s => (
             <div key={s.k} className="rounded-xl bg-slate-50 p-4 text-center"><div className="text-2xl font-extrabold text-[#0f2043]">{s.v}</div><div className="text-[11px] font-semibold text-slate-400">{s.k}</div></div>
           ))}
         </div>

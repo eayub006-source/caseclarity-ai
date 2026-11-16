@@ -1,9 +1,9 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { LayoutDashboard, FolderOpen, UploadCloud, Plug, BarChart3, History, LogOut, Menu, X, Plus, Search, Bell, ShieldCheck, RotateCcw } from "lucide-react";
-import { useStore } from "@/lib/store";
+import { useStore, errorMessage } from "@/lib/store";
 import { Logo, Badge } from "@/components/ui";
 
 const NAV = [
@@ -16,10 +16,33 @@ const NAV = [
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { user, logout, resetDemo, log, toast, ready } = useStore();
+  const { user, logout, resetDemo, toast, ready, cases, recs, config, isManager, notify } = useStore();
   const router = useRouter();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const pendingReviews = recs.filter(r => r.status === "pending").length;
+  const modeBadge = config.aiMode === "llm" ? <Badge tone="blue">Live AI</Badge> : <Badge tone="amber">Demo Mode</Badge>;
+
+  const doReset = async () => {
+    if (!window.confirm("Reset the workspace to the fictional demo data? All cases, documents and audit entries will be replaced.")) return;
+    setResetting(true);
+    try {
+      await resetDemo();
+      notify("Workspace reset to the fictional demo data.");
+    } catch (e) {
+      notify(`Reset failed: ${errorMessage(e)}`, "warn");
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  const bell = (cls: string) => (
+    <Link href="/dashboard" title={`${pendingReviews} recommendation(s) awaiting review`} className={cls}>
+      <Bell size={16} />
+      {pendingReviews > 0 && <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-rose-500 px-1 text-[9px] font-extrabold text-white">{pendingReviews}</span>}
+    </Link>
+  );
 
   // Wait for the server-side session check before deciding access.
   if (!ready) return <div className="grid min-h-screen place-items-center text-sm text-slate-400">Loading workspace…</div>;
@@ -51,24 +74,26 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           return (
             <Link key={n.href} href={n.href} onClick={() => setOpen(false)} className={`flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-semibold transition ${active ? "bg-[#0f2043] text-white shadow-md" : "text-slate-600 hover:bg-slate-100"}`}>
               <n.icon size={17} />{n.label}
-              {n.href === "/cases" && <span className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-extrabold ${active ? "bg-white/20" : "bg-slate-100 text-slate-500"}`}>6</span>}
+              {n.href === "/cases" && <span className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-extrabold ${active ? "bg-white/20" : "bg-slate-100 text-slate-500"}`}>{cases.length}</span>}
             </Link>
           );
         })}
       </nav>
       <div className="border-t border-slate-100 p-4">
         <div className="rounded-xl bg-blue-50 p-3 text-[11px] leading-relaxed text-blue-900">
-          <b>Demo Mode</b> — fictional data. AI assists; humans decide.
+          {config.aiMode === "llm" ? <><b>Live AI</b> ({config.model})</> : <><b>Demo Mode</b> — deterministic demo engine</>}. AI assists; humans decide.
         </div>
         <div className="mt-3 flex items-center gap-3">
           <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-[#1e3a5f] to-[#2563eb] text-xs font-extrabold text-white">{initials}</div>
           <div className="min-w-0 flex-1 leading-tight">
             <div className="truncate text-xs font-extrabold text-slate-800">{user.name}</div>
-            <div className="truncate text-[11px] text-slate-400">{user.role}</div>
+            <div className="truncate text-[11px] text-slate-400">{user.roleLabel}</div>
           </div>
           <button onClick={() => { logout(); router.push("/login"); }} title="Sign out" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-rose-600"><LogOut size={16} /></button>
         </div>
-        <button onClick={() => { resetDemo(); log(null, "Demo data reset", "Workspace reset to fictional seed data", "system"); }} className="mt-2 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] font-semibold text-slate-400 hover:bg-slate-100"><RotateCcw size={12} /> Reset demo data</button>
+        {isManager && config.demoAccount && (
+          <button onClick={doReset} disabled={resetting} className="mt-2 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] font-semibold text-slate-400 hover:bg-slate-100 disabled:opacity-50"><RotateCcw size={12} className={resetting ? "animate-spin" : ""} /> {resetting ? "Resetting…" : "Reset demo data"}</button>
+        )}
       </div>
     </div>
   );
@@ -79,7 +104,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="sticky top-0 z-40 flex items-center justify-between border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur lg:hidden">
         <Logo />
         <div className="flex items-center gap-2">
-          <button className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><Bell size={18} /></button>
+          {bell("relative rounded-lg p-2 text-slate-500 hover:bg-slate-100")}
           <button onClick={() => setOpen(!open)} className="rounded-lg p-2 text-slate-600 hover:bg-slate-100">{open ? <X size={20} /> : <Menu size={20} />}</button>
         </div>
       </div>
@@ -94,10 +119,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-3">
             <div className="relative">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input placeholder="Search cases… (use Cases page)" className="w-56 rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-xs outline-none focus:border-blue-400" onKeyDown={e => { if (e.key === "Enter") router.push("/cases"); }} />
+              <input placeholder="Search cases… (Enter)" className="w-56 rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-xs outline-none focus:border-blue-400" onKeyDown={e => { if (e.key === "Enter") { const q = e.currentTarget.value.trim(); router.push(q ? `/cases?q=${encodeURIComponent(q)}` : "/cases"); } }} />
             </div>
-            <Badge tone="amber">Demo Mode</Badge>
-            <button className="relative rounded-xl border border-slate-200 p-2 text-slate-500 hover:bg-slate-50"><Bell size={16} /><span className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-rose-500 text-[9px] font-extrabold text-white">3</span></button>
+            {modeBadge}
+            {bell("relative rounded-xl border border-slate-200 p-2 text-slate-500 hover:bg-slate-50")}
           </div>
         </div>
         <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">{children}</main>

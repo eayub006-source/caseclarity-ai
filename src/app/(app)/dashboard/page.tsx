@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { FolderOpen, Clock, CheckCircle2, AlertTriangle, Plus, UploadCloud, ArrowRight, FileText, Sparkles, TrendingUp } from "lucide-react";
 import { useStore } from "@/lib/store";
-import { Card, Badge, StatusBadge, PriorityDot, DemoBanner, SafetyBanner } from "@/components/ui";
+import { Card, Badge, StatusBadge, PriorityDot, AiModeBanner, SafetyBanner } from "@/components/ui";
 import { fmtTime } from "@/lib/core";
 
 export default function Dashboard() {
@@ -135,7 +135,7 @@ export default function Dashboard() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <DemoBanner />
+        <AiModeBanner />
         <SafetyBanner />
       </div>
     </div>

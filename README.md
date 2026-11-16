@@ -176,11 +176,11 @@ git clone https://github.com/eayub006-source/caseclarity-ai.git
 cd caseclarity-ai
 npm install
 cp .env.example .env      # defaults point to postgres:postgres@127.0.0.1:5432/app_db
-npx drizzle-kit push      # creates the database tables
+npm run db:push           # creates/updates the database tables
 npm run dev               # http://localhost:3000
 ```
 
-Open <http://localhost:3000/login> and sign in with `demo@caseclarity.ai` / `demo1234`. On the first sign-in, the demo account and the fictional dataset (6 cases, 15 documents, 20 facts, 6 recommendations, 14 audit events) are created automatically.
+Open <http://localhost:3000/login> and sign in with `demo@caseclarity.ai` / `demo1234`. On the first sign-in, the demo account and the fictional dataset (6 cases, 19 documents, 20 facts, 6 recommendations, 14 audit events) are created automatically. The demo account exists only when `DEMO_ACCOUNT=true` or in development — see [Environment variables](#environment-variables).
 
 ## Demo guide for judges
 
@@ -255,7 +255,7 @@ caseclarity-ai/
 │       └── password.ts           # bcrypt helpers (server)
 ├── tests/                        # Vitest unit tests
 ├── .env.example                  # environment variable template
-├── drizzle.config.json           # drizzle-kit configuration
+├── drizzle.config.ts             # drizzle-kit configuration (reads DATABASE_URL)
 ├── AGENTS.md                     # developer guide
 ├── CONTEXT.md                    # verified project context
 ├── PROBLEM_STATEMENT.md          # problem and solution
@@ -294,10 +294,10 @@ Then adjust the values if needed — see [Environment variables](#environment-va
 
 ### 5. Create the tables
 ```bash
-npx drizzle-kit push
+npm run db:push
 ```
 
-> **Note:** `drizzle-kit` reads its connection string from `drizzle.config.json`, which is set to the default local database. It does not read `.env`. If you use a different database, update the `url` in `drizzle.config.json` as well as `DATABASE_URL` in `.env`.
+> **Note:** `drizzle.config.ts` reads `DATABASE_URL` from `.env`, the same as the app. Run `npm run db:push` again after pulling schema changes. **Upgrading an existing database?** Run it, then use *Reset demo data* so the seeded cases get their completeness values.
 
 ### 6. Start the app
 ```bash
@@ -311,6 +311,7 @@ All variables are listed in [`.env.example`](./.env.example):
 
 ```env
 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/app_db
+DEMO_ACCOUNT=true
 LLM_API_KEY=
 LLM_BASE_URL=https://api.openai.com/v1
 LLM_MODEL=gpt-4o-mini
@@ -318,14 +319,15 @@ LLM_MODEL=gpt-4o-mini
 
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
-| `DATABASE_URL` | Yes | — | PostgreSQL connection string used by the app |
+| `DATABASE_URL` | Yes | — | PostgreSQL connection string used by the app and by `npm run db:push` |
+| `DEMO_ACCOUNT` | No | on in development, **off in production** | `true` creates the demo account and fictional seed data. **Set `DEMO_ACCOUNT=true` on the judges' deployment.** |
 | `LLM_API_KEY` | No | *(empty)* | Enables LLM analysis; leave it empty to use Demo Mode |
 | `LLM_BASE_URL` | No | `https://api.openai.com/v1` | Base URL of an OpenAI-compatible API |
 | `LLM_MODEL` | No | `gpt-4o-mini` | Model name sent to the API |
 
 - The LLM key is read only on the server and is never sent to the browser.
 - `.env` is listed in `.gitignore` — never commit it.
-- Some UI labels say "Demo Mode" even when a key is configured (see [Known limitations](#known-limitations)).
+- The UI shows "Live AI" or "Demo Mode" according to whether a key is configured (`GET /api/config`).
 
 ## Running the project
 
@@ -336,35 +338,39 @@ LLM_MODEL=gpt-4o-mini
 | `npm run start` | Starts the production server (run `npm run build` first) |
 | `npm run lint` | Runs ESLint |
 | `npm run typecheck` | Runs the TypeScript compiler without emitting files |
+| `npm test` | Runs the unit tests |
+| `npm run db:push` | Creates or updates the database tables from `src/db/schema.ts` |
 
 - **Health check:** `curl http://localhost:3000/api/health` returns `{"ok":true}` when the app can reach the database.
-- **Demo data:** seeded automatically on the first sign-in when the database has no cases. *Reset demo data* in the sidebar restores it; this deletes all case data but keeps user accounts.
+- **Demo data:** seeded automatically on the first sign-in when the database has no cases. *Reset demo data* in the sidebar (senior case workers and admins only) restores it; this deletes all case data but keeps user accounts.
 
 ## Tests and quality checks
 
 ```bash
-npx vitest run
+npm test
 ```
 
-The suite contains **14 unit tests** in `tests/` and does not need a database:
+The suite contains **41 unit tests** in `tests/` and does not need a database:
 
 | File | What it covers |
 |---|---|
 | `tests/extraction.test.ts` | Real PDF, DOCX and TXT extraction; facts attributed to the correct document and page; every evidence item has a document, page and snippet |
+| `tests/analysis.test.ts` | Required-document checklist (synonyms, completeness); demo-engine results on every seeded case; labelled amounts; contradiction rules |
+| `tests/llm.test.ts` | LLM output validation: citations checked against the documents, page correction, unknown documents marked unverified, prompt page markers |
 | `tests/auth.test.ts` | bcrypt hashing: no plaintext storage, correct and incorrect passwords, salted hashes |
 | `tests/csv.test.ts` | Quoted fields containing commas, mixed date formats, missing columns, duplicate detection |
+| `tests/misc.test.ts` | Roles, login rate limiter, estimated pages for DOCX/TXT, RFC 4180 export, CSV date/priority/status import |
 
 Full validation sequence:
 
 ```bash
-npx vitest run
-npx next typegen
-npm exec tsc -- --noEmit --pretty false
+npm test
+npm run typecheck
 npm run lint
 npm run build
 ```
 
-There is no `npm test` script yet — use `npx vitest run`. API routes and UI flows are not yet covered by automated tests.
+API routes and UI flows are not yet covered by automated tests in the repo.
 
 ## API overview
 
@@ -398,24 +404,20 @@ The full reference, including request and response formats, is in [CONTEXT.md](.
 
 ## Known limitations
 
-This is a hackathon prototype. The most important limitations are listed below; the full, verified list is in [CONTEXT.md](./CONTEXT.md#16-known-issues--limitations).
+This is a hackathon prototype. The full list is in [CONTEXT.md](./CONTEXT.md#16-known-issues--limitations).
 
-- **Completeness not saved** — case completeness percentages are not stored in the database, so they appear blank.
-- **Oldest-first lists** — lists come back oldest-first, so the dashboard's "Recent" widgets show the oldest items after a page reload.
-- **Malformed case export** — the cases CSV export does not quote every field, so the date column splits into two.
-- **Hardcoded counts** — the sidebar case badge, the Evaluation page totals and the notification badge do not change.
-- **Keyword-based checklist** — the required-document checklist matches filenames by keyword, so the "complete" demo case shows two items as missing.
-- **Simple demo engine** — for example, the first pair of capitalised words is taken as the client name, and results on seeded cases can differ from the hand-written examples.
-- **LLM mode untested** — it has not been run with a live key, and its output is not validated against a schema.
-- **Static "Demo Mode" labels** — they are shown even when an LLM key is configured.
-- **No OCR** — scanned PDFs return no text, and only PDFs have real page numbers.
+- **Simple demo engine** — rule-based: it finds the client name, dates and labelled amounts (rent, income, arrears…), and only compares like with like. It is not a substitute for the LLM.
+- **LLM mode checked only against a mock** — citations are verified against the documents, but it has not been run with a live key.
+- **No OCR** — scanned PDFs return no text. Only PDFs have real page numbers; DOCX/TXT/CSV pages are estimated.
 - **Google Drive is simulated.**
-- **No role-based authorization** — any signed-in user can view and change all cases.
+- **Single organization** — roles exist (case worker, senior case worker, admin), but every signed-in user sees all cases of the deployment.
+- **In-memory rate limiting** — the login limiter is per server instance.
 
 ## Documentation
 
 | Document | What it covers |
 |---|---|
+| [PROJECT_STATUS.md](./PROJECT_STATUS.md) | Plain-language summary of what is done and what is remaining |
 | [PROBLEM_STATEMENT.md](./PROBLEM_STATEMENT.md) | The original brief, the problem, our solution and approach, and how the system works |
 | [CONTEXT.md](./CONTEXT.md) | Verified project context: feature status, architecture, data model, API reference, known issues and roadmap |
 | [AGENTS.md](./AGENTS.md) | Guide for developers and AI coding assistants: setup, conventions, rules for safe changes and validation |

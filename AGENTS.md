@@ -18,7 +18,7 @@ These protect the product's core promise — *explainable, human-controlled AI* 
 5. **Audit everything.** Every user-visible action must call `log(caseId, action, details, category)` from `useStore()`.
 6. **Secrets stay on the server.** Read `process.env.*` only in route handlers and server-only modules. Never use a `NEXT_PUBLIC_` prefix for secrets. Never commit `.env`.
 7. **Use the auth helpers.** Passwords go only through `src/lib/password.ts` (bcrypt); sessions only through `src/lib/auth-server.ts`. Never return password hashes or raw session tokens.
-8. **Protect every data route.** Start each handler with `requireUser()` and return 401 when it returns null. The only intentional exceptions are `GET /api/health`, `POST /api/auth` and the first-run `POST /api/seed`.
+8. **Protect every data route.** Start each handler with `requireUser()` and return 401 when it returns null. The only intentional exceptions are `GET /api/health`, `GET /api/config` (non-secret flags) and `POST /api/auth`. Manager-only actions also check `isManager(user)` and return 403. State-changing requests are origin-checked by `src/proxy.ts`.
 9. **No browser storage for data or credentials.** All data lives in PostgreSQL behind the API. localStorage was removed on purpose — do not reintroduce it.
 10. **Fictional data only.** Never add real client documents to seeds, tests or fixtures.
 11. **Keep the build green.** Run the validation sequence (§8) before every commit.
@@ -58,13 +58,13 @@ See CONTEXT.md §4 for the full diagram and §7 for the API reference.
 | `tailwindcss`, `@tailwindcss/postcss` | 4.1.17 | Styling | `globals.css`, all JSX | v4: theme tokens live in CSS (`@theme`); there is no `tailwind.config.js` |
 | `lucide-react` | ^1.73.0 | Icons | pages, `ui.tsx` | |
 | `drizzle-orm` | 0.45.2 | Queries and schema | `src/db`, API routes | **Silently ignores object keys that are not columns** |
-| `drizzle-kit` | 0.31.10 | `drizzle-kit push` | CLI | Reads the DB URL from `drizzle.config.json` (hardcoded), not from `DATABASE_URL` |
+| `drizzle-kit` | 0.31.10 | `npm run db:push` | CLI | `drizzle.config.ts` reads `DATABASE_URL` from `.env` |
 | `pg` | 8.20.0 | PostgreSQL pool | `src/db/index.ts` | |
 | `unpdf` | ^1.9.1 | PDF text (PDF.js) | `src/lib/extract.ts` | `mergePages: false` returns one string per page |
 | `mammoth` | ^1.13.0 | DOCX text | `src/lib/extract.ts` | In Node pass `{ buffer }`; `{ arrayBuffer }` fails with "Could not find file in options" |
 | `papaparse` | ^5.7.1 | RFC 4180 CSV | `src/lib/csv.ts` | Use `Papa.unparse()` for exports |
 | `bcryptjs` | ^3.0.3 | Password hashing | `src/lib/password.ts` | Cost factor 10 |
-| `vitest` | ^5.1.0 | Unit tests | `tests/` | Run with `npx vitest run` |
+| `vitest` | ^5.1.0 | Unit tests | `tests/` | Run with `npm test` |
 | `jszip` | ^3.10.2 | Builds DOCX test fixtures | tests only | |
 | `eslint`, `eslint-config-next` | 9.39.4 / 16.4.2 | Linting | `eslint.config.mjs` | `next/core-web-vitals` rules |
 
@@ -84,7 +84,7 @@ Runtime: **Node.js 22** (developed and tested on v22.23.4) and **PostgreSQL 15**
 ```bash
 npm install
 cp .env.example .env            # set DATABASE_URL; LLM_API_KEY is optional
-# drizzle-kit reads its URL from drizzle.config.json (hardcoded) — edit it if your database differs
+# drizzle.config.ts reads DATABASE_URL from .env
 npx drizzle-kit push            # create or update tables from src/db/schema.ts
 npm run dev                     # http://localhost:3000
 ```
@@ -109,7 +109,7 @@ Set `LLM_API_KEY` (and optionally `LLM_BASE_URL` and `LLM_MODEL`) in `.env` and 
 
 ```bash
 psql postgresql://postgres:postgres@127.0.0.1:5432/app_db -c "select count(*) from cases"
-npx vitest run                  # unit tests
+npm test                        # unit tests
 npm run lint                    # ESLint
 ```
 
@@ -205,14 +205,14 @@ export async function POST(req: Request) {
 ### 7.1 Before you start
 
 - Read the relevant part of CONTEXT.md, especially **§16 Known issues** — some surprising behavior is already known and documented.
-- Run `npx vitest run` and `npm run build` first so you know the baseline is green.
+- Run `npm test` and `npm run build` first so you know the baseline is green.
 
 ### 7.2 Recipes
 
 **Change the database schema**
 
 1. Edit `src/db/schema.ts`.
-2. Run `npx drizzle-kit push` (it uses `drizzle.config.json`).
+2. Run `npm run db:push` (it reads `DATABASE_URL`).
 3. Update the matching type in `src/lib/core.ts`.
 4. Update the API routes: `insert().values(...)`, the `ALLOWED` lists and responses.
 5. Update `src/app/api/seed/route.ts` if the seed data should fill the new column.
@@ -252,13 +252,14 @@ export async function POST(req: Request) {
 ### 7.3 Gotchas
 
 - Drizzle silently ignores unknown keys on insert and update.
-- The list `GET` routes return records oldest-first; do not assume newest-first (KI-2).
+- The list `GET` routes return records newest-first (extractions: in creation order). The store prepends new items to match.
 - `log()` adds a temporary entry (its `id` starts with `tmp-`) to local state; the stored copy appears after a reload.
-- `POST /api/seed` only seeds an empty database; `?reset=1` wipes all case data (not users).
+- `POST /api/seed` requires a session and demo mode (`DEMO_ACCOUNT`); it only seeds an empty database. `?reset=1` (managers only) wipes all case data (not users) and logs the reset.
+- Store mutations throw on failure — always `try/catch` them and show `errorMessage(e)`; never report success before the `await` resolves.
+- Recommendation reviews go through `PATCH /api/recommendations/[id]`, which only accepts `status`, `reviewComment` and `summary` (for `modified`); the reviewer is the session user, and approved/rejected recommendations are locked.
 - Re-running an analysis replaces the case's facts and adds a new recommendation. Older recommendations remain; the newest one is displayed.
 - Tests are excluded from `tsconfig.json`, so `next build` will not catch type errors in tests — run Vitest.
-- `drizzle.config.json` has its own hardcoded database URL.
-- The "Demo Mode" labels are static (KI-11); update them if you change how the mode is detected.
+- Mode labels come from `useStore().config` (`GET /api/config`) and each recommendation's `engine` (`seed` | `demo` | `llm`).
 
 ### 7.4 Definition of done
 
@@ -276,7 +277,7 @@ export async function POST(req: Request) {
 Run these from the project root before every commit:
 
 ```bash
-npx vitest run                              # 14 tests — all must pass
+npm test                                    # 41 tests — all must pass
 npx next typegen                            # generate route types
 npm exec tsc -- --noEmit --pretty false     # type check
 npm run lint                                # ESLint (0 problems at last review)
@@ -306,3 +307,13 @@ curl -s -b /tmp/cj -X POST localhost:3000/api/analyze \
 - Add dependencies with `npm install <package>` (use `-D` for dev-only tools) so `package-lock.json` stays in sync.
 - Suggested commit style: short imperative messages with a scope, e.g. `fix(api): return audit entries newest-first`.
 - Update CONTEXT.md in the same change whenever features, endpoints, tables, environment variables or known issues change.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+## This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

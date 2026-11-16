@@ -5,6 +5,7 @@ import { History, Sparkles, FileText, ShieldCheck, Clock, Download, Search } fro
 import { useStore } from "@/lib/store";
 import { Card, Badge, EmptyState, Btn } from "@/components/ui";
 import { fmtTime } from "@/lib/core";
+import { toCSV, downloadCSV } from "@/lib/csv";
 
 export default function AuditPage() {
   const { audit, cases, log } = useStore();
@@ -18,12 +19,10 @@ export default function AuditPage() {
   }), [audit, q, cat]);
 
   const exportAudit = () => {
-    const header = "Timestamp,Actor,Action,Category,Case,Details\n";
-    const rows = audit.map(a => [a.timestamp, a.actor, `"${a.action}"`, a.category, a.caseId ? (cases.find(c => c.id === a.caseId)?.caseNumber || a.caseId) : "—", `"${a.details.replace(/"/g, '""')}"`].join(",")).join("\n");
-    const blob = new Blob([header + rows], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = "caseclarity-audit-trail.csv"; a.click();
-    URL.revokeObjectURL(url);
+    downloadCSV("caseclarity-audit-trail.csv", toCSV(
+      ["Timestamp", "Actor", "Action", "Category", "Case", "Details"],
+      audit.map(a => [a.timestamp, a.actor, a.action, a.category, a.caseId ? (cases.find(c => c.id === a.caseId)?.caseNumber || a.caseId) : "", a.details]),
+    ));
     log(null, "Audit export", `Exported ${audit.length} audit events to CSV`, "system");
   };
 

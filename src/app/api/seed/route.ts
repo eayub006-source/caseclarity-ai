@@ -2,13 +2,15 @@ import { db } from "@/db";
 import { cases, documents, extractions, recommendations, auditLogs } from "@/db/schema";
 import { NextResponse } from "next/server";
 import { seedCases, seedDocs, seedExtractions, seedRecommendations, seedAudit } from "@/lib/core";
-import { requireUser, ensureDemoUser } from "@/lib/auth-server";
+import { requireUser, unauthorized, forbidden, isManager } from "@/lib/auth-server";
+import { isDemoEnabled } from "@/lib/server-config";
 
 export const dynamic = "force-dynamic";
 
-// Seeds the fictional demo dataset into PostgreSQL (idempotent).
-// POST /api/seed        -> seed only if the cases table is empty
-// POST /api/seed?reset=1 -> wipe demo data and re-seed (requires auth)
+// Seeds the fictional demo dataset into PostgreSQL.
+// POST /api/seed          -> seed only if the cases table is empty (signed-in users)
+// POST /api/seed?reset=1  -> wipe case data and re-seed (senior case workers / admins)
+// Both are disabled when demo mode is off (see isDemoEnabled()).
 
 async function seedAll() {
   const cs = seedCases();
@@ -54,7 +56,7 @@ async function seedAll() {
   await db.insert(extractions).values(
     es.map((e) => ({
       caseId: caseMap.get(e.caseId)!,
-      documentId: docMap.get(e.documentId)!,
+      documentId: e.documentId ? docMap.get(e.documentId) ?? null : null,
       fieldName: e.fieldName,
       fieldValue: e.fieldValue,
       confidence: e.confidence,
@@ -74,7 +76,9 @@ async function seedAll() {
       reasoning: r.reasoning,
       confidence: r.confidence,
       status: r.status,
+      engine: "seed",
       evidence: r.evidence,
+      contradictions: r.contradictions || [],
       missingInfo: r.missingInfo,
       uncertainties: r.uncertainties,
       nextSteps: r.nextSteps,
@@ -95,27 +99,30 @@ async function seedAll() {
       timestamp: new Date(a.timestamp),
     }))
   );
-
-  await ensureDemoUser();
 }
 
 export async function POST(req: Request) {
-  const url = new URL(req.url);
-  const reset = url.searchParams.get("reset") === "1";
-  const existing = await db.select({ id: cases.id }).from(cases);
+  const user = await requireUser();
+  if (!user) return unauthorized();
+  if (!isDemoEnabled()) return NextResponse.json({ seeded: false, reason: "Demo data is disabled on this deployment" }, { status: 403 });
 
-  if (existing.length > 0 && !reset) {
-    return NextResponse.json({ seeded: false, reason: "Database already seeded" });
-  }
+  const reset = new URL(req.url).searchParams.get("reset") === "1";
   if (reset) {
-    const user = await requireUser();
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    await db.delete(auditLogs);
-    await db.delete(recommendations);
-    await db.delete(extractions);
-    await db.delete(documents);
-    await db.delete(cases);
+    if (!isManager(user)) return forbidden("Only senior case workers and admins can reset demo data");
+    await db.transaction(async (tx) => {
+      await tx.delete(auditLogs);
+      await tx.delete(recommendations);
+      await tx.delete(extractions);
+      await tx.delete(documents);
+      await tx.delete(cases);
+    });
+    await seedAll();
+    await db.insert(auditLogs).values({ caseId: null, actor: user.name, action: "Demo data reset", details: "Workspace reset to fictional seed data", category: "system" });
+    return NextResponse.json({ seeded: true });
   }
+
+  const existing = await db.select({ id: cases.id }).from(cases).limit(1);
+  if (existing.length > 0) return NextResponse.json({ seeded: false, reason: "Database already seeded" });
   await seedAll();
   return NextResponse.json({ seeded: true });
 }

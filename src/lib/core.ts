@@ -14,21 +14,27 @@ export interface DocItem {
   status: DocStatus; extractedText: string; pageCount: number; uploadedAt: string; source: string;
 }
 export interface Extraction {
-  id: string; caseId: string; documentId: string; fieldName: string; fieldValue: string;
+  id: string; caseId: string; documentId: string | null; fieldName: string; fieldValue: string;
   confidence: number; sourceDoc: string; sourcePage: number; sourceSnippet: string; category: string;
+  verified?: boolean; // false = cited document/snippet not found in the case file
 }
-export interface Evidence { claim: string; doc: string; page: number; snippet: string; }
+export interface Evidence { claim: string; doc: string; page: number; snippet: string; verified?: boolean; }
+export type Engine = "seed" | "demo" | "llm";
 export interface Recommendation {
   id: string; caseId: string; title: string; summary: string; reasoning: string;
   confidence: number; status: RecStatus; evidence: Evidence[]; missingInfo: string[];
   uncertainties: string[]; nextSteps: string[]; createdAt: string; reviewedBy?: string; reviewComment?: string;
+  engine?: Engine; contradictions?: string[];
 }
 export interface AuditEntry {
   id: string; caseId: string | null; actor: string; action: string; details: string;
   category: string; timestamp: string;
 }
-export interface User { name: string; email: string; role: string; org: string; }
+export interface User { id?: string; name: string; email: string; role: string; roleLabel: string; org: string; }
+export interface AppConfig { aiMode: "llm" | "demo"; model: string | null; demoAccount: boolean; }
 
+export const CASE_STATUSES: CaseStatus[] = ["awaiting_review", "in_progress", "completed", "missing_docs", "flagged"];
+export const PRIORITIES = ["low", "medium", "high", "urgent"] as const;
 export const CASE_TYPES = ["Housing / Eviction", "Benefits Appeal", "Employment", "Family Law", "Immigration", "Consumer Debt", "Other"];
 export const REQUIRED_DOCS: Record<string, string[]> = {
   "Housing / Eviction": ["Government ID", "Lease Agreement", "Eviction Notice", "Proof of Income", "Rent Payment History"],
@@ -40,17 +46,61 @@ export const REQUIRED_DOCS: Record<string, string[]> = {
   "Other": ["Government ID", "Supporting Evidence"],
 };
 
-export const DEMO_USER: User = { name: "Alex Rivera", email: "demo@caseclarity.ai", role: "Senior Case Worker", org: "Northside Legal Aid" };
+// ---------- Required-document checklist ----------
+// Each requirement is recognised by synonyms in the file name OR the extracted
+// text (e.g. "Pay_Stubs_Mar2026.pdf" satisfies "Proof of Income").
+const INCOME_RE = /\b(pay ?stubs?|paystubs?|payslips?|pay slips?|gross pay|proof of income|income letter|employer letter|w-?2|monthly income)\b/i;
+const DOC_MATCHERS: Record<string, RegExp> = {
+  "Government ID": /\b(government id|state id|id card|identity card|driver'?s licen[cs]e|drivers licen[cs]e|passport|identification card)\b/i,
+  "Passport / ID": /\b(passport|government id|state id|id card|identification card)\b/i,
+  "Lease Agreement": /\blease\b/i,
+  "Eviction Notice": /\b(eviction|notice to vacate|notice to quit)\b/i,
+  "Proof of Income": INCOME_RE,
+  "Income Proof": INCOME_RE,
+  "Rent Payment History": /\b(rent payment history|payment history|rent ledger|rent receipts?)\b/i,
+  "Benefit Denial Letter": /\b(denial|notice of denial|denied)\b/i,
+  "Household Composition": /\b(household composition|household members|household size)\b/i,
+  "Medical Evidence (if applicable)": /\b(medical records?|doctor'?s note|physician|diagnosis|medical evidence)\b/i,
+  "Employment Contract": /\b(employment contract|employment agreement|offer letter)\b/i,
+  "Pay Stubs": /\b(pay ?stubs?|paystubs?|payslips?|pay slips?)\b/i,
+  "Termination Letter": /\b(termination|dismissal|separation letter)\b/i,
+  "Correspondence with Employer": /\b(e-?mail|correspondence|letter to hr|hr reply|memo)\b/i,
+  "Birth Certificates": /\bbirth certificates?\b/i,
+  "Financial Disclosure": /\bfinancial disclosure\b/i,
+  "Court Orders": /\b(court order|custody order|judgment|order dated)\b/i,
+  "Visa Documents": /\bvisa\b/i,
+  "Sponsorship Letter": /\bsponsor(ship)?\b/i,
+  "Proof of Residence": /\b(utility bill|proof of residence|confirms current residence|residence proof)\b/i,
+  "Creditor Statements": /\b(creditor statement|account statement|statement of account)\b/i,
+  "Debt Collection Letters": /\b(collection letter|debt collection|collections|debt validation)\b/i,
+  "Supporting Evidence": /[\s\S]/,
+};
+
+export interface ChecklistItem { name: string; present: boolean; matchedDoc?: string; }
+export interface ChecklistResult { items: ChecklistItem[]; missing: string[]; completeness: number; }
+
+export function checkRequiredDocs(caseType: string, docs: Pick<DocItem, "name" | "extractedText">[]): ChecklistResult {
+  const required = REQUIRED_DOCS[caseType] || REQUIRED_DOCS["Other"];
+  const items = required.map((name) => {
+    const re = DOC_MATCHERS[name] || new RegExp(`\\b${name.split(" ")[0].replace(/[^a-z]/gi, "")}`, "i");
+    const hit = docs.find((d) => re.test(d.name.replace(/[_\-.]+/g, " ") + "\n" + (d.extractedText || "")));
+    return { name, present: !!hit, matchedDoc: hit?.name };
+  });
+  const missing = items.filter((i) => !i.present).map((i) => i.name);
+  const completeness = Math.round(((items.length - missing.length) / Math.max(1, items.length)) * 100);
+  return { items, missing, completeness };
+}
 
 export function seedCases(): CaseItem[] {
-  return [
+  const docs = seedDocs();
+  return ([
     { id: "c1", caseNumber: "CC-2026-001", title: "Eviction Defense — 14-Day Notice Response", clientName: "Maria Gonzalez", caseType: "Housing / Eviction", status: "awaiting_review", priority: "high", description: "Client received a 14-day eviction notice after falling behind on rent due to a medical emergency. Complete documentation on file.", assignedTo: "Alex Rivera", createdAt: "2026-04-28T09:00:00Z", updatedAt: "2026-05-10T14:20:00Z", completeness: 100 },
     { id: "c2", caseNumber: "CC-2026-002", title: "SNAP Benefits Appeal — Denial Review", clientName: "James Carter", caseType: "Benefits Appeal", status: "missing_docs", priority: "urgent", description: "SNAP benefits denied for 'insufficient income verification'. Only the denial letter is on file. Income proof, ID, and household composition are missing.", assignedTo: "Priya Nair", createdAt: "2026-05-02T11:30:00Z", updatedAt: "2026-05-09T16:45:00Z", completeness: 20 },
     { id: "c3", caseNumber: "CC-2026-003", title: "Wrongful Termination — Discrimination Claim", clientName: "Aisha Thompson", caseType: "Employment", status: "flagged", priority: "high", description: "Client alleges termination after requesting pregnancy-related accommodations. Documents contain contradictory dates and income figures that must be reconciled.", assignedTo: "Alex Rivera", createdAt: "2026-04-20T08:15:00Z", updatedAt: "2026-05-11T10:05:00Z", completeness: 72 },
     { id: "c4", caseNumber: "CC-2026-004", title: "Custody Modification — Changed Circumstances", clientName: "David Okafor", caseType: "Family Law", status: "in_progress", priority: "medium", description: "Father seeks custody modification citing relocation and improved housing stability. Financial disclosure pending.", assignedTo: "Jordan Lee", createdAt: "2026-05-05T13:00:00Z", updatedAt: "2026-05-11T09:30:00Z", completeness: 60 },
     { id: "c5", caseNumber: "CC-2026-005", title: "Debt Collection Defense — Validation Request", clientName: "Rosa Delgado", caseType: "Consumer Debt", status: "completed", priority: "low", description: "Creditor validation letter drafted and sent. Case closed after creditor failed to validate debt within 30 days.", assignedTo: "Priya Nair", createdAt: "2026-03-18T10:00:00Z", updatedAt: "2026-05-06T15:00:00Z", completeness: 100 },
     { id: "c6", caseNumber: "CC-2026-006", title: "Asylum Support Letter — Credible Fear", clientName: "Yusuf Hassan", caseType: "Immigration", status: "awaiting_review", priority: "urgent", description: "Support letter for credible fear interview. Passport and residence proof on file; sponsorship letter outstanding.", assignedTo: "Jordan Lee", createdAt: "2026-05-08T07:45:00Z", updatedAt: "2026-05-11T11:15:00Z", completeness: 55 },
-  ];
+  ] as CaseItem[]).map((c) => ({ ...c, completeness: checkRequiredDocs(c.caseType, docs.filter((d) => d.caseId === c.id)).completeness }));
 }
 
 export function seedDocs(): DocItem[] {
@@ -70,6 +120,10 @@ export function seedDocs(): DocItem[] {
     { id: "d13", caseId: "c5", name: "Debt_Validation_Letter.pdf", type: "PDF", size: 92000, status: "processed", pageCount: 3, uploadedAt: "2026-03-18T10:10:00Z", source: "Upload", extractedText: "Debt validation request sent to Apex Collections on March 18, 2026, on behalf of Rosa Delgado. Amount disputed: $3,200. No response received within 30 days." },
     { id: "d14", caseId: "c6", name: "Passport_Hassan.pdf", type: "PDF", size: 110000, status: "processed", pageCount: 2, uploadedAt: "2026-05-08T08:00:00Z", source: "Upload", extractedText: "Passport — Yusuf Hassan. Issued 2021, expires 2026. Nationality: Sudan. Entry date: March 15, 2026." },
     { id: "d15", caseId: "c6", name: "Residence_Proof_Hassan.pdf", type: "PDF", size: 64000, status: "processed", pageCount: 1, uploadedAt: "2026-05-08T08:05:00Z", source: "Upload", extractedText: "Utility bill for Yusuf Hassan, 220 Pine St, dated April 2026. Confirms current residence." },
+    { id: "d16", caseId: "c1", name: "Drivers_License_Gonzalez.pdf", type: "PDF", size: 54000, status: "processed", pageCount: 1, uploadedAt: "2026-04-28T09:05:00Z", source: "Upload", extractedText: "STATE DRIVER'S LICENSE. Name: Maria Gonzalez. DOB 03/14/1989. Address: 412 Elm Street, Apt 3B. Expires 2029." },
+    { id: "d17", caseId: "c5", name: "State_ID_Delgado.pdf", type: "PDF", size: 51000, status: "processed", pageCount: 1, uploadedAt: "2026-03-18T10:02:00Z", source: "Upload", extractedText: "STATE ID CARD. Name: Rosa Delgado. DOB 07/22/1975. Expires 2030." },
+    { id: "d18", caseId: "c5", name: "Apex_Account_Statement.pdf", type: "PDF", size: 73000, status: "processed", pageCount: 1, uploadedAt: "2026-03-18T10:04:00Z", source: "Upload", extractedText: "Account statement from Apex Collections for Rosa Delgado. Amount claimed $3,200. Original creditor not identified." },
+    { id: "d19", caseId: "c5", name: "Income_Letter_Delgado.pdf", type: "PDF", size: 40000, status: "processed", pageCount: 1, uploadedAt: "2026-03-18T10:06:00Z", source: "Upload", extractedText: "Employer income letter for Rosa Delgado confirming monthly income of $2,100." },
   ];
 }
 
@@ -116,7 +170,7 @@ export function seedRecommendations(): Recommendation[] {
       { claim: "Termination Apr 10, 2026 for 'position elimination'", doc: "Termination_Letter_Thompson.pdf", page: 1, snippet: "Effective date: April 10, 2026. Reason: 'Position elimination'" },
       { claim: "Position refilled Apr 15, 2026", doc: "Accommodation_Request_Email.txt", page: 1, snippet: "position was refilled April 15, 2026" },
       { claim: "Salary conflict: $62,000 vs $69,600", doc: "Pay_Stub_Thompson_Mar.pdf", page: 1, snippet: "Gross $5,800/month ($69,600/year)" },
-    ], missingInfo: ["HR raise memo confirming Jan 2026 salary increase", "Job posting for refilled position"], uncertainties: ["Whether the salary gap is a clerical error or intentional misstatement is unclear.", "Employer may claim an independent reason for termination not in the file."], nextSteps: ["Request HR raise memo from client", "Preserve email headers for accommodation request", "Consult employment attorney before filing deadline"], createdAt: "2026-05-11T10:05:00Z" },
+    ], contradictions: ["Income figures conflict: $62,000/year (Termination_Letter_Thompson.pdf) vs $69,600/year (Pay_Stub_Thompson_Mar.pdf).", "Termination reason ('position elimination') conflicts with evidence the position was refilled April 15, 2026."], missingInfo: ["HR raise memo confirming Jan 2026 salary increase", "Job posting for refilled position"], uncertainties: ["Whether the salary gap is a clerical error or intentional misstatement is unclear.", "Employer may claim an independent reason for termination not in the file."], nextSteps: ["Request HR raise memo from client", "Preserve email headers for accommodation request", "Consult employment attorney before filing deadline"], createdAt: "2026-05-11T10:05:00Z" },
     { id: "r4", caseId: "c4", title: "Recommend: Draft Modification Petition After Financial Disclosure", summary: "Housing improvement is documented, but the financial disclosure is still missing. Complete that before filing.", reasoning: "New 3-bedroom housing (Mar 2026) supports changed-circumstances argument vs 2024 order. Financial disclosure is required for modification petitions in this jurisdiction and is not yet on file.", confidence: 71, status: "pending", evidence: [
       { claim: "Current order dates to June 2024", doc: "Current_Custody_Order.pdf", page: 1, snippet: "Order dated June 12, 2024" },
       { claim: "New 3-bedroom housing since Mar 2026", doc: "Housing_Proof_Okafor.pdf", page: 1, snippet: "88 Oak Avenue, 3-bedroom, effective March 1, 2026" },
@@ -152,17 +206,85 @@ export function seedAudit(): AuditEntry[] {
 }
 
 // ---------- Explainable AI engine (Demo Mode — deterministic, no LLM key needed) ----------
-// FIXED: facts are extracted per document and per page. Every fact retains its
-// actual documentId, filename, page number and supporting snippet. Pages are
-// separated by \f (form feed) in extractedText (see src/lib/extract.ts).
-export function runAnalysis(c: CaseItem, docs: DocItem[]): { extractions: Extraction[]; recommendation: Recommendation; contradictions: string[]; missing: string[]; summary: string } {
+// Facts are extracted per document and per page. Every fact keeps its actual
+// documentId, filename, page number and supporting snippet. Pages are separated
+// by \f (form feed) in extractedText (see src/lib/extract.ts).
+
+const MONTHS = "January|February|March|April|May|June|July|August|September|October|November|December";
+const DATE_RE = new RegExp(`\\b((?:${MONTHS}) \\d{1,2}, \\d{4}|\\d{1,2}/\\d{1,2}/\\d{4}|\\d{4}-\\d{2}-\\d{2})\\b`, "g");
+const MONEY_RE = /\$\s?(\d[\d,]*(?:\.\d{1,2})?)(?:\s*(?:\/|per\s+)\s*(month|mo|year|yr|annum|hour|hr)\b)?/gi;
+const MAX_PER_PAGE = 6;
+
+function dateLabel(before: string): string {
+  const b = before.toLowerCase();
+  if (/\b(dob|date of birth|born)\b/.test(b)) return "Date of Birth";
+  if (/\b(deadline|due|no later than)\b|\b(by|before)\s*$/.test(b)) return "Deadline";
+  if (/\b(effective|last day)\b/.test(b)) return "Effective Date";
+  if (/\bservice\b/.test(b)) return "Date of Service";
+  if (/\bentry\b/.test(b)) return "Entry Date";
+  if (/\brefilled\b/.test(b)) return "Event Date";
+  if (/\b(dated|date)\b/.test(b)) return "Document Date";
+  return "Date";
+}
+
+// Picks the money keyword closest to the amount.
+const AMOUNT_KINDS: [string, RegExp][] = [
+  ["Rent", /\brent\b/g],
+  ["Arrears", /\b(arrears|owed|past due|behind)\b/g],
+  ["Income", /\b(gross|net|salary|income|wages?|pay(?!ment)|earnings?|raise)\b/g],
+  ["Hourly Rate", /\bhourly\b/g],
+  ["Bill", /\b(bill|total|charges?|cost)\b/g],
+  ["Debt", /\b(debt|disputed|balance|claimed)\b/g],
+];
+function amountLabel(before: string): string {
+  const b = before.toLowerCase();
+  let best = "Amount", bestIdx = -1;
+  for (const [label, re] of AMOUNT_KINDS) {
+    re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(b))) if (m.index > bestIdx) { bestIdx = m.index; best = label; }
+  }
+  return best;
+}
+
+function annualise(value: number, unit?: string): number | null {
+  if (!unit) return null;
+  const u = unit.toLowerCase();
+  if (u === "month" || u === "mo") return value * 12;
+  if (u === "year" || u === "yr" || u === "annum") return value;
+  return null;
+}
+
+const money = (n: number) => "$" + n.toLocaleString("en-US");
+
+export interface AnalysisResult {
+  extractions: Extraction[];
+  recommendation: Recommendation;
+  contradictions: string[];
+  missing: string[];
+  completeness: number;
+  suggestedStatus: CaseStatus;
+  summary: string;
+}
+
+export function suggestStatus(missingCount: number, contradictionCount: number): CaseStatus {
+  if (missingCount >= 3) return "missing_docs";
+  if (contradictionCount > 0) return "flagged";
+  return "awaiting_review";
+}
+
+export function runAnalysis(c: CaseItem, docs: DocItem[]): AnalysisResult {
   const extractions: Extraction[] = [];
-  const amounts: { value: number; doc: string }[] = [];
-  let nameFound = "";
+  const incomes: { annual: number; doc: string }[] = [];
+  const rents: { value: number; doc: string }[] = [];
+  const uncertainties: string[] = [];
   let fullText = "";
+  let nameFound = false;
 
   const snippetAround = (pageText: string, idx: number, len: number) =>
-    pageText.slice(Math.max(0, idx - 30), idx + len + 30).replace(/\s+/g, " ").trim();
+    pageText.slice(Math.max(0, idx - 40), idx + len + 30).replace(/\s+/g, " ").trim();
+  const push = (d: DocItem, page: number, fieldName: string, fieldValue: string, confidence: number, snippet: string, category: string) =>
+    extractions.push({ id: uid(), caseId: c.id, documentId: d.id, fieldName, fieldValue, confidence, sourceDoc: d.name, sourcePage: page, sourceSnippet: snippet, category, verified: true });
 
   for (const d of docs) {
     const pages = (d.extractedText || "").split("\f");
@@ -170,93 +292,127 @@ export function runAnalysis(c: CaseItem, docs: DocItem[]): { extractions: Extrac
     pages.forEach((pageText, pi) => {
       const page = pi + 1;
 
-      if (!nameFound) {
-        const m = pageText.match(/([A-Z][a-z]+ [A-Z][a-z]+)/);
-        if (m && m.index !== undefined) {
-          nameFound = m[1];
-          extractions.push({
-            id: uid(), caseId: c.id, documentId: d.id, fieldName: "Client Name", fieldValue: m[1],
-            confidence: 96, sourceDoc: d.name, sourcePage: page,
-            sourceSnippet: snippetAround(pageText, m.index, m[0].length), category: "identity",
-          });
+      // Client name: look for the case's own client, never "the first two capitalised words".
+      if (!nameFound && c.clientName) {
+        const idx = pageText.toLowerCase().indexOf(c.clientName.toLowerCase());
+        if (idx >= 0) {
+          nameFound = true;
+          push(d, page, "Client Name", c.clientName, 96, snippetAround(pageText, idx, c.clientName.length), "identity");
         }
       }
 
-      const dateRe = /((?:January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}, \d{4})/g;
+      DATE_RE.lastIndex = 0;
       let dm: RegExpExecArray | null;
       let di = 0;
-      while ((dm = dateRe.exec(pageText)) && di < 3) {
-        extractions.push({
-          id: uid(), caseId: c.id, documentId: d.id, fieldName: `Date ${di + 1}`, fieldValue: dm[1],
-          confidence: 93, sourceDoc: d.name, sourcePage: page,
-          sourceSnippet: snippetAround(pageText, dm.index, dm[1].length), category: "date",
-        });
+      while ((dm = DATE_RE.exec(pageText)) && di < MAX_PER_PAGE) {
+        const label = dateLabel(pageText.slice(Math.max(0, dm.index - 40), dm.index));
+        push(d, page, label, dm[1], 93, snippetAround(pageText, dm.index, dm[1].length), "date");
         di++;
       }
 
-      const moneyRe = /\$([\d,]+)/g;
+      MONEY_RE.lastIndex = 0;
       let mm: RegExpExecArray | null;
       let mi = 0;
-      while ((mm = moneyRe.exec(pageText)) && mi < 3) {
-        amounts.push({ value: parseInt(mm[1].replace(/,/g, "")), doc: d.name });
-        extractions.push({
-          id: uid(), caseId: c.id, documentId: d.id, fieldName: `Amount ${mi + 1}`, fieldValue: `$${mm[1]}`,
-          confidence: 92, sourceDoc: d.name, sourcePage: page,
-          sourceSnippet: snippetAround(pageText, mm.index, mm[0].length), category: "financial",
-        });
+      while ((mm = MONEY_RE.exec(pageText)) && mi < MAX_PER_PAGE) {
+        const value = parseFloat(mm[1].replace(/,/g, ""));
+        const unit = mm[2];
+        let label = amountLabel(pageText.slice(Math.max(0, mm.index - 40), mm.index));
+        if (unit && /^(hour|hr)$/i.test(unit)) label = "Hourly Rate";
+        const unitShown = unit ? "/" + unit.toLowerCase().replace(/^mo$/, "month").replace(/^yr$/, "year") : "";
+        push(d, page, label, `$${mm[1]}${unitShown}`, label === "Amount" ? 85 : 92, snippetAround(pageText, mm.index, mm[0].length), "financial");
+        if (label === "Income") {
+          const annual = annualise(value, unit);
+          if (annual !== null) incomes.push({ annual, doc: d.name });
+        }
+        if (label === "Rent" && value > 0) rents.push({ value, doc: d.name });
         mi++;
       }
     });
   }
 
-  const contradictions: string[] = [];
-  const uniq = [...new Set(amounts.map((a) => a.value))];
-  if (uniq.length >= 2 && Math.max(...uniq) - Math.min(...uniq) > 2000) {
-    contradictions.push(
-      `Multiple distinct monetary figures found: ${amounts.map((a) => `$${a.value.toLocaleString()} (${a.doc})`).join(", ")}. Verify which figure is current — documents may reflect different dates.`
-    );
+  if (docs.length && !nameFound) {
+    uncertainties.push(`The client name "${c.clientName}" does not appear in any document — confirm these documents belong to this client.`);
   }
-  if (/refilled|position elimination/i.test(fullText) && /accommodation/i.test(fullText)) {
+
+  // Contradictions: only compare like with like.
+  const contradictions: string[] = [];
+  const annualValues = [...new Set(incomes.map((i) => i.annual))];
+  if (annualValues.length >= 2) {
+    const lo = Math.min(...annualValues), hi = Math.max(...annualValues);
+    if ((hi - lo) / hi > 0.05) {
+      const a = incomes.find((i) => i.annual === lo)!, b = incomes.find((i) => i.annual === hi)!;
+      contradictions.push(`Income figures conflict: ${money(lo)}/year (${a.doc}) vs ${money(hi)}/year (${b.doc}). Confirm which figure is current — documents may reflect different dates.`);
+    }
+  }
+  const rentValues = [...new Set(rents.map((r) => r.value))];
+  if (rentValues.length >= 2) {
+    contradictions.push(`Different rent amounts appear across documents: ${rents.map((r) => `${money(r.value)} (${r.doc})`).join(", ")}. Confirm the current rent.`);
+  }
+  if (/position elimination|position (was |has been )?eliminated/i.test(fullText) && /refilled/i.test(fullText)) {
     contradictions.push("Termination reason ('position elimination') conflicts with evidence the position was refilled shortly after. Requires human investigation.");
   }
 
-  const required = REQUIRED_DOCS[c.caseType] || REQUIRED_DOCS["Other"];
-  const docNamesLower = docs.map((d) => d.name.toLowerCase()).join(" ");
-  const missing = required.filter((r) => {
-    const key = r.toLowerCase().split(" ")[0];
-    return !docNamesLower.includes(key) && !fullText.toLowerCase().includes(key);
-  });
+  const checklist = checkRequiredDocs(c.caseType, docs);
+  const missing = checklist.missing;
+  const required = checklist.items.length;
+  const deadlines = extractions.filter((e) => e.fieldName === "Deadline");
 
-  const completeness = Math.max(5, Math.min(100, Math.round((docs.length / Math.max(1, required.length)) * 100)));
+  // Evidence: most decision-relevant facts first.
+  const PRIORITY: Record<string, number> = { Deadline: 0, Arrears: 1, Income: 2, Rent: 3, "Effective Date": 4, "Event Date": 5, Bill: 6, Debt: 7, "Client Name": 8 };
+  const evidence: Evidence[] = [...extractions]
+    .filter((e) => e.fieldName !== "Date of Birth")
+    .sort((a, b) => (PRIORITY[a.fieldName] ?? 20) - (PRIORITY[b.fieldName] ?? 20))
+    .slice(0, 5)
+    .map((e) => ({ claim: `${e.fieldName}: ${e.fieldValue}`, doc: e.sourceDoc, page: e.sourcePage, snippet: e.sourceSnippet, verified: true }));
 
-  let title = "", summary = "", reasoning = "", confidence = 70;
-  const evidence: Evidence[] = extractions.slice(0, 4).map((e) => ({ claim: `${e.fieldName}: ${e.fieldValue}`, doc: e.sourceDoc, page: e.sourcePage, snippet: e.sourceSnippet }));
+  let title: string, summary: string, reasoning: string, confidence: number;
+  const nextSteps: string[] = [];
   if (missing.length >= 3) {
     title = "Recommend: Request Missing Documents Before Proceeding";
-    summary = `Do not proceed yet — ${missing.length} required document(s) are missing. Filing without them risks denial.`;
-    reasoning = `Only ${docs.length} document(s) on file vs ${required.length} required for ${c.caseType}. Missing: ${missing.join(", ")}.`;
+    summary = `Do not proceed yet — ${missing.length} of ${required} required document(s) are missing. Acting without them risks denial.`;
+    reasoning = `${required - missing.length} of ${required} required documents for ${c.caseType} are on file. Missing: ${missing.join(", ")}.`;
     confidence = 90;
+    nextSteps.push(`Request from client: ${missing.join(", ")}`, "Re-run analysis after upload");
   } else if (contradictions.length > 0) {
     title = "Recommend: Investigate Contradictions Before Filing";
-    summary = "Material inconsistencies detected across documents. Reconcile them with the client before taking action.";
-    reasoning = contradictions.join(" ") + ` ${extractions.length} facts extracted from ${docs.length} document(s).`;
+    summary = "Material inconsistencies were detected across documents. Reconcile them with the client before taking action.";
+    reasoning = contradictions.join(" ") + ` ${extractions.length} facts extracted from ${docs.length} document(s).` + (missing.length ? ` Also missing: ${missing.join(", ")}.` : "");
     confidence = 74;
+    nextSteps.push("Review each contradiction with the client and the source documents");
+    if (missing.length) nextSteps.push(`Request: ${missing.join(", ")}`);
+  } else if (missing.length > 0) {
+    title = "Recommend: Obtain Remaining Documents Before Filing";
+    summary = `${missing.length} required document(s) still missing: ${missing.join(", ")}. No contradictions were found in the documents on file.`;
+    reasoning = `${required - missing.length} of ${required} required documents for ${c.caseType} are on file and consistent. ${extractions.length} facts extracted with source references.`;
+    confidence = 80;
+    nextSteps.push(`Request: ${missing.join(", ")}`, "Re-run analysis after upload");
   } else {
     title = "Recommend: Proceed — Evidence Is Complete and Consistent";
     summary = "All required documents are present and no contradictions were detected. Evidence supports proceeding to the next step.";
-    reasoning = `${docs.length} document(s) reviewed; ${extractions.length} facts extracted with source references. No missing required documents and no contradictions detected.`;
+    reasoning = `${docs.length} document(s) reviewed; ${extractions.length} facts extracted with source references. All ${required} required documents present; no contradictions detected.`;
     confidence = 86;
+    nextSteps.push("Human reviewer to verify facts against originals and approve", "Record decision in audit trail");
   }
+  if (deadlines.length) nextSteps.push(`Calendar deadline: ${deadlines.map((d) => d.fieldValue).join(", ")}`);
 
   const rec: Recommendation = {
     id: uid(), caseId: c.id, title, summary, reasoning, confidence,
-    status: "pending", evidence, missingInfo: missing,
-    uncertainties: ["Demo Mode: confidence is an uncalibrated heuristic score, NOT a verified probability.", "Automated extraction may miss handwritten or scanned content — verify against originals."],
-    nextSteps: missing.length ? [`Request: ${missing.join(", ")}`, "Re-run analysis after upload"] : ["Human reviewer to confirm and approve", "Record decision in audit trail"],
+    status: "pending", evidence, missingInfo: missing, contradictions,
+    uncertainties: [
+      ...uncertainties,
+      "Demo Mode: confidence is an uncalibrated heuristic score, NOT a verified probability.",
+      "Automated extraction may miss handwritten or scanned content — verify against originals.",
+    ],
+    nextSteps, engine: "demo",
     createdAt: new Date().toISOString(),
   };
-  const summaryText = `Analyzed ${docs.length} document(s) for ${c.clientName} (${c.caseType}). Extracted ${extractions.length} facts. ${missing.length} missing item(s), ${contradictions.length} contradiction(s). Completeness ~${completeness}%.`;
-  return { extractions, recommendation: rec, contradictions, missing, summary: summaryText };
+  const summaryText = `Analyzed ${docs.length} document(s) for ${c.clientName} (${c.caseType}). Extracted ${extractions.length} facts. ${missing.length} missing item(s), ${contradictions.length} contradiction(s). Completeness ${checklist.completeness}%.`;
+  return {
+    extractions, recommendation: rec, contradictions, missing,
+    completeness: checklist.completeness,
+    suggestedStatus: suggestStatus(missing.length, contradictions.length),
+    summary: summaryText,
+  };
 }
 
 export const EVALUATION = {

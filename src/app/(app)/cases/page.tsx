@@ -4,11 +4,14 @@ import Link from "next/link";
 import { Search, Plus, Download, Filter, FolderOpen } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { Card, Badge, StatusBadge, PriorityDot, EmptyState, Btn } from "@/components/ui";
-import { fmtDate, CASE_TYPES } from "@/lib/core";
+import { CASE_TYPES, fmtDate } from "@/lib/core";
+import { toCSV, downloadCSV } from "@/lib/csv";
 
 export default function CasesPage() {
   const { cases, log } = useStore();
-  const [q, setQ] = useState("");
+  // The top-bar search sends ?q=… here. (This page only renders in the browser:
+  // the workspace layout waits for the session check first.)
+  const [q, setQ] = useState(() => (typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("q") || ""));
   const [status, setStatus] = useState("all");
   const [type, setType] = useState("all");
 
@@ -20,12 +23,10 @@ export default function CasesPage() {
   }), [cases, q, status, type]);
 
   const exportCSV = () => {
-    const header = "Case Number,Title,Client,Type,Status,Priority,Assigned To,Completeness %,Created\n";
-    const rows = cases.map(c => [c.caseNumber, `"${c.title.replace(/"/g, '""')}"`, c.clientName, c.caseType, c.status, c.priority, c.assignedTo, c.completeness, fmtDate(c.createdAt)].join(",")).join("\n");
-    const blob = new Blob([header + rows], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = "caseclarity-cases-export.csv"; a.click();
-    URL.revokeObjectURL(url);
+    downloadCSV("caseclarity-cases-export.csv", toCSV(
+      ["Case Number", "Title", "Client", "Type", "Status", "Priority", "Assigned To", "Completeness %", "Created"],
+      cases.map(c => [c.caseNumber, c.title, c.clientName, c.caseType, c.status, c.priority, c.assignedTo, c.completeness ?? 0, c.createdAt.slice(0, 10)]),
+    ));
     log(null, "CSV export", `Exported ${cases.length} cases to CSV`, "integration");
   };
 
@@ -78,8 +79,8 @@ export default function CasesPage() {
                 <div className="mt-1 text-xs font-semibold text-slate-500">{c.clientName} · {c.caseType}</div>
                 <p className="mt-2 line-clamp-2 flex-1 text-xs leading-relaxed text-slate-500">{c.description}</p>
                 <div className="mt-3">
-                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-400"><span>Document completeness</span><span>{c.completeness}%</span></div>
-                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${c.completeness >= 80 ? "bg-emerald-500" : c.completeness >= 50 ? "bg-amber-500" : "bg-rose-500"}`} style={{ width: `${c.completeness}%` }} /></div>
+                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-400"><span>Document completeness</span><span>{c.completeness ?? 0}%</span></div>
+                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${(c.completeness ?? 0) >= 80 ? "bg-emerald-500" : (c.completeness ?? 0) >= 50 ? "bg-amber-500" : "bg-rose-500"}`} style={{ width: `${c.completeness ?? 0}%` }} /></div>
                 </div>
                 <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
                   <StatusBadge status={c.status} />

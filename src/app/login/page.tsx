@@ -3,14 +3,17 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Mail, Lock, Eye, EyeOff, ShieldCheck, Sparkles, ArrowLeft } from "lucide-react";
-import { useStore } from "@/lib/store";
-import { Logo, DemoBanner } from "@/components/ui";
+import { useStore, errorMessage, ApiError } from "@/lib/store";
+import { Logo, AiModeBanner } from "@/components/ui";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login } = useStore();
-  const [email, setEmail] = useState("demo@caseclarity.ai");
-  const [password, setPassword] = useState("demo1234");
+  const { login, config } = useStore();
+  // null = untouched: shows the demo account on deployments where it exists.
+  const [emailInput, setEmail] = useState<string | null>(null);
+  const [passwordInput, setPassword] = useState<string | null>(null);
+  const email = emailInput ?? (config.demoAccount ? "demo@caseclarity.ai" : "");
+  const password = passwordInput ?? (config.demoAccount ? "demo1234" : "");
   const [show, setShow] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -18,10 +21,14 @@ export default function LoginPage() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(""); setLoading(true);
-    const ok = await login(email, password);
-    setLoading(false);
-    if (ok) router.push("/dashboard");
-    else setError("Invalid email or password. Try the demo account below, or create a new account.");
+    try {
+      await login(email, password);
+      router.push("/dashboard");
+    } catch (err) {
+      setLoading(false);
+      if (err instanceof ApiError && err.status === 401) setError(config.demoAccount ? "Invalid email or password. Try the demo account below, or create a new account." : "Invalid email or password.");
+      else setError(errorMessage(err, "Sign-in failed. Please try again."));
+    }
   };
 
   return (
@@ -45,7 +52,7 @@ export default function LoginPage() {
           <div className="lg:hidden"><Logo /></div>
           <h1 className="mt-4 text-2xl font-extrabold text-[#0f2043]">Welcome back</h1>
           <p className="mt-1 text-sm text-slate-500">Sign in to your case worker workspace.</p>
-          <div className="mt-5"><DemoBanner /></div>
+          <div className="mt-5"><AiModeBanner /></div>
           <form onSubmit={submit} className="mt-5 space-y-4">
             <label className="block">
               <span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Email</span>
@@ -61,9 +68,9 @@ export default function LoginPage() {
             {error && <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{error}</div>}
             <button disabled={loading} className="w-full rounded-xl bg-[#0f2043] py-3 text-sm font-bold text-white shadow-md transition hover:bg-[#1e3a5f] disabled:opacity-60">{loading ? "Signing in…" : "Sign In"}</button>
           </form>
-          <button onClick={() => { setEmail("demo@caseclarity.ai"); setPassword("demo1234"); }} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-blue-300 bg-blue-50 px-4 py-3 text-xs font-bold text-blue-800 hover:bg-blue-100">
+          {config.demoAccount && <button onClick={() => { setEmail("demo@caseclarity.ai"); setPassword("demo1234"); }} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-blue-300 bg-blue-50 px-4 py-3 text-xs font-bold text-blue-800 hover:bg-blue-100">
             <Sparkles size={14} /> Use demo account for judges — demo@caseclarity.ai / demo1234
-          </button>
+          </button>}
           <p className="mt-5 text-center text-sm text-slate-500">No account? <Link href="/signup" className="font-bold text-[#2563eb] hover:underline">Create one</Link></p>
         </div>
       </div>

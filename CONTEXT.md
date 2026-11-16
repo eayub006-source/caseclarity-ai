@@ -516,7 +516,11 @@ npm run build
 
 ## 16. Known issues & limitations
 
-These were verified during the documentation review by reading the code, inspecting the database and running `runAnalysis()` on the seed data. **None of them were changed in this review** — they are listed here so the team can prioritise them.
+> **Status (branch `fix/known-issues`, 2026-11-16): KI-1 to KI-16 are fixed**, except the parts listed under *Still open* below. The original descriptions are kept for history.
+>
+> Still open: OCR for scanned PDFs and legacy `.doc` (KI-10); storing original files (KI-10); real DOCX page boundaries — DOCX/TXT/CSV pages are now *estimated* at ~1,800 characters (KI-9); organization scoping (roles exist, but all users of a deployment share one workspace) and password reset / email verification (KI-14); a live-key test of LLM mode — it was verified end-to-end against a mock OpenAI-compatible server (KI-8). The login rate limiter is in-memory per instance.
+
+These were verified during the documentation review by reading the code, inspecting the database and running `runAnalysis()` on the seed data.
 
 **KI-1 — Case completeness is not persisted.** `CaseItem.completeness` exists in TypeScript, but the `cases` table has no `completeness` column (confirmed in the database). Drizzle silently ignores keys that are not columns, so seed values and analysis updates are dropped. Cases loaded from the API therefore show an empty percentage and an empty bar on case cards and in the case header, and the completeness column of the CSV export is empty. *Fix:* add `completeness: integer("completeness").default(0)` to `cases`, run `npx drizzle-kit push`, then reset the demo data.
 
@@ -611,3 +615,4 @@ These were verified during the documentation review by reading the code, inspect
 3. **Backend hardening** — real PDF/DOCX extraction (`/api/extract`), an LLM endpoint with a server-side key (`/api/analyze`), per-document and per-page attribution in `runAnalysis()`, bcrypt with server-side sessions, PapaParse CSV parsing, a PostgreSQL-backed store with protected API routes, and 14 automated tests.
 4. **Documentation** — `CONTEXT.md`, `AGENTS.md` and `PROBLEM_STATEMENT.md` added. No application code was changed.
 5. **Repository setup** — `.gitignore` added and the project committed to a git repository on the `main` branch. No application code was changed.
+6. **Known-issues fix pass** (`fix/known-issues`) — completeness persisted; newest-first lists; RFC 4180 exports; live counts; mode-aware labels and a per-recommendation `engine`; synonym-based document checklist shared by the UI and engine; reworked demo engine (case client name, labelled amounts, like-for-like contradictions, an "obtain remaining documents" branch); LLM prompt with document/page markers and server-side citation verification (`verified` flag); estimated pages for DOCX/TXT; CSV import of date/priority/status; Drive case picker; checked writes with error toasts and session-expiry handling; server-side validation; roles (`case_worker`, `senior_case_worker`, `admin`); login rate limiting; origin-checked API (`src/proxy.ts`); session-derived audit actor and reviewer; locked reviews; cascade deletes; `DEMO_ACCOUNT` flag; `drizzle.config.ts`; `npm test`. 41 unit tests.

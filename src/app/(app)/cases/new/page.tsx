@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, FolderPlus, ShieldCheck } from "lucide-react";
 import Link from "next/link";
-import { useStore } from "@/lib/store";
+import { useStore, errorMessage } from "@/lib/store";
 import { Card, Field, inputCls, Btn, SafetyBanner } from "@/components/ui";
 import { CASE_TYPES } from "@/lib/core";
 
@@ -16,13 +16,20 @@ export default function NewCasePage() {
   const [priority, setPriority] = useState<"low" | "medium" | "high" | "urgent">("medium");
   const [description, setDescription] = useState("");
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !clientName.trim()) { setError("Title and client name are required."); return; }
-    const c = await addCase({ title: title.trim(), clientName: clientName.trim(), caseType, status: "awaiting_review", priority, description: description.trim() || "New case — documents to be uploaded.", assignedTo: user?.name || "Unassigned" });
-    log(c.id, "Case created", `Case ${c.caseNumber} opened for ${c.clientName} (${c.caseType})`, "case");
-    router.push(`/cases/${c.id}`);
+    setError(""); setSaving(true);
+    try {
+      const c = await addCase({ title: title.trim(), clientName: clientName.trim(), caseType, status: "awaiting_review", priority, description: description.trim() || "New case — documents to be uploaded.", assignedTo: user?.name || "Unassigned" });
+      await log(c.id, "Case created", `Case ${c.caseNumber} opened for ${c.clientName} (${c.caseType})`, "case");
+      router.push(`/cases/${c.id}`);
+    } catch (err) {
+      setError(`Could not create the case: ${errorMessage(err)}`);
+      setSaving(false);
+    }
   };
 
   return (
@@ -49,7 +56,7 @@ export default function NewCasePage() {
           <Field label="Description"><textarea value={description} onChange={e => setDescription(e.target.value)} rows={4} className={inputCls} placeholder="Brief summary of the situation…" /></Field>
           {error && <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{error}</div>}
           <div className="flex gap-2 pt-1">
-            <Btn type="submit"><FolderPlus size={15} /> Create Case</Btn>
+            <Btn type="submit" disabled={saving}><FolderPlus size={15} /> {saving ? "Creating…" : "Create Case"}</Btn>
             <Link href="/cases"><Btn variant="secondary">Cancel</Btn></Link>
           </div>
         </form>
