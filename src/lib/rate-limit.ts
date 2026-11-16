@@ -20,6 +20,30 @@ export function hit(key: string, limit: number, windowMs: number, now = Date.now
   return { allowed: true, retryAfterSec: 0 };
 }
 
+// Atomically reserves one attempt on every key (synchronously, before any
+// await, so concurrent requests cannot all pass a check-then-count gap).
+// Returns a function that refunds the reservation, e.g. when a login
+// succeeds. If any key is over its limit, nothing stays reserved.
+export function reserve(keys: [key: string, limit: number][], windowMs: number, now = Date.now()): { allowed: true; refund: () => void } | { allowed: false; retryAfterSec: number } {
+  const taken: string[] = [];
+  for (const [key, limit] of keys) {
+    const r = hit(key, limit, windowMs, now);
+    taken.push(key);
+    if (!r.allowed) {
+      for (const k of taken) release(k);
+      return { allowed: false, retryAfterSec: r.retryAfterSec };
+    }
+  }
+  let refunded = false;
+  return { allowed: true, refund: () => { if (!refunded) { refunded = true; for (const k of taken) release(k); } } };
+}
+
+// Gives back one counted attempt.
+export function release(key: string) {
+  const b = buckets.get(key);
+  if (b && b.count > 0) b.count -= 1;
+}
+
 // Checks whether `key` is over its limit WITHOUT counting an attempt.
 export function peek(key: string, limit: number, now = Date.now()): RateResult {
   const b = buckets.get(key);
@@ -44,13 +68,14 @@ function sweep(now: number) {
 // the IP alone: per-account limits apply regardless.
 export function clientIp(req: Request, trustProxy = process.env.TRUST_PROXY === "true"): string | null {
   if (!trustProxy) return null;
-  const real = req.headers.get("x-real-ip")?.trim();
-  if (real) return real;
+  // Prefer X-Forwarded-For: its right-most entry is the address our own proxy
+  // appended (Vercel and nginx's proxy_add_x_forwarded_for both do this), so
+  // values the client pre-filled sit to its left and are ignored. X-Real-IP is
+  // only a fallback because a proxy may pass a client-supplied one through.
   const fwd = req.headers.get("x-forwarded-for");
   if (fwd) {
     const hops = fwd.split(",").map((h) => h.trim()).filter(Boolean);
-    // The right-most entry is the one appended by our own proxy.
     if (hops.length) return hops[hops.length - 1];
   }
-  return null;
+  return req.headers.get("x-real-ip")?.trim() || null;
 }

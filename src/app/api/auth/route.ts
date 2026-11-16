@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import { hashPassword, verifyPassword, MIN_PASSWORD_LENGTH } from "@/lib/password";
 import { createSession, destroySession, getSessionUser, ensureDemoUser, toSessionUser, DEMO_EMAIL } from "@/lib/auth-server";
 import { isDemoEnabled, DEFAULT_ORG } from "@/lib/server-config";
-import { hit, peek, reset, clientIp } from "@/lib/rate-limit";
+import { reserve, reset, clientIp } from "@/lib/rate-limit";
 import { readJson, str } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
@@ -14,20 +14,24 @@ export const dynamic = "force-dynamic";
 // - Passwords are bcrypt-hashed at rest (never plaintext).
 // - Successful login/signup creates a server-side session; the raw token is
 //   returned only in an httpOnly cookie. Only its SHA-256 hash is stored.
-// - Only FAILED logins and SUCCESSFUL signups are counted, so nobody can use
-//   up someone else's allowance with requests that would fail anyway.
+// - Attempts are reserved atomically BEFORE any await (no check-then-count
+//   race). A successful login refunds its reservation, so only FAILED logins
+//   count; a signup that does not create an account is refunded too.
+// - Per-account cap (always on, independent of IP): stops password guessing
+//   even from many addresses. It is deliberately a few times the per-source
+//   cap: high enough that one attacker cannot lock out the real user, low
+//   enough that guessing stays impractical.
 // - With a trusted client IP (TRUST_PROXY=true, recommended in production):
-//   failures are blocked per email + IP, so an attacker only locks out their
-//   own source; a much higher per-account cap is a backstop against
-//   distributed guessing.
-// - Without a trusted IP, the per-account failure limit applies. Trade-off: a
-//   third party can then lock an account for up to 15 minutes. Set
-//   TRUST_PROXY=true behind Vercel/nginx to avoid this.
+//   a tighter per email + IP cap blocks the attacker's own source first, and a
+//   per-IP cap stops one address from spraying many accounts.
+// Trade-off: an attacker with FAILS_PER_ACCOUNT failures (from several
+// trusted IPs, or from anywhere when TRUST_PROXY is off) can lock an account
+// for up to 15 minutes. Use a CAPTCHA if that becomes a real problem.
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const LOGIN_WINDOW = 15 * 60 * 1000;
-const FAILS_PER_SOURCE = 10;      // per email + trusted IP (or per email when no IP is known)
-const FAILS_PER_ACCOUNT = 100;    // per email, all sources (backstop when IPs are trusted)
+const FAILS_PER_SOURCE = 10;      // per email + trusted IP
+const FAILS_PER_ACCOUNT = 30;     // per email, all sources — always enforced
 const FAILS_PER_IP = 50;          // per trusted IP, all accounts
 const SIGNUP_WINDOW = 60 * 60 * 1000;
 const SIGNUPS_PER_IP = 10;        // successful signups per trusted IP
@@ -68,48 +72,53 @@ export async function POST(req: Request) {
     }
     if (password.length > 200) return NextResponse.json({ error: "Password is too long" }, { status: 400 });
     if (em === DEMO_EMAIL) return NextResponse.json({ error: "Account already exists" }, { status: 409 });
-    const signupKey = ip ? `signup:${ip}` : "signup:global";
-    const signupLimit = ip ? SIGNUPS_PER_IP : SIGNUPS_GLOBAL;
-    const rl = peek(signupKey, signupLimit);
-    if (!rl.allowed) return tooMany(rl.retryAfterSec);
-    const existing = await db.select({ id: users.id }).from(users).where(eq(users.email, em));
-    if (existing.length) return NextResponse.json({ error: "Account already exists" }, { status: 409 });
-    const [row] = await db
-      .insert(users)
-      .values({
-        email: em,
-        name: str(body.name, 120) || "Case Worker",
-        org: str(body.org, 160) || DEFAULT_ORG,
-        role: "case_worker",
-        password: await hashPassword(password),
-      })
-      .returning();
-    hit(signupKey, signupLimit, SIGNUP_WINDOW); // count successful signups only
+    // Reserve before any await; refunded unless an account is created.
+    const slot = reserve([[ip ? `signup:${ip}` : "signup:global", ip ? SIGNUPS_PER_IP : SIGNUPS_GLOBAL]], SIGNUP_WINDOW);
+    if (!slot.allowed) return tooMany(slot.retryAfterSec);
+    let row: typeof users.$inferSelect;
+    try {
+      const existing = await db.select({ id: users.id }).from(users).where(eq(users.email, em));
+      if (existing.length) { slot.refund(); return NextResponse.json({ error: "Account already exists" }, { status: 409 }); }
+      [row] = await db
+        .insert(users)
+        .values({
+          email: em,
+          name: str(body.name, 120) || "Case Worker",
+          org: str(body.org, 160) || DEFAULT_ORG,
+          role: "case_worker",
+          password: await hashPassword(password),
+        })
+        .returning();
+    } catch (e) {
+      slot.refund();
+      throw e;
+    }
     await createSession(row.id);
     return NextResponse.json({ user: toSessionUser(row) }, { status: 201 });
   }
 
-  // Login (default). Check the limits without counting; count only failures.
-  const sourceKey = ip ? `login:${em}:${ip}` : `login:${em}`;
-  const limits: [string, number][] = [[sourceKey, FAILS_PER_SOURCE]];
-  if (ip) limits.push([`login-acct:${em}`, FAILS_PER_ACCOUNT], [`login-ip:${ip}`, FAILS_PER_IP]);
-  for (const [key, limit] of limits) {
-    const rl = peek(key, limit);
-    if (!rl.allowed) return tooMany(rl.retryAfterSec);
-  }
-  const fail = () => {
-    for (const [key, limit] of limits) hit(key, limit, LOGIN_WINDOW);
-    return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
-  };
+  // Login (default). Reserve the attempt on every limit before any await.
+  const limits: [string, number][] = [[`login-acct:${em}`, FAILS_PER_ACCOUNT]];
+  if (ip) limits.push([`login:${em}:${ip}`, FAILS_PER_SOURCE], [`login-ip:${ip}`, FAILS_PER_IP]);
+  const slot = reserve(limits, LOGIN_WINDOW);
+  if (!slot.allowed) return tooMany(slot.retryAfterSec);
+  const invalid = () => NextResponse.json({ error: "Invalid credentials" }, { status: 401 }); // reservation kept = failure counted
 
-  // Bootstrap the demo account on first use — only when demo mode is enabled.
-  if (em === DEMO_EMAIL) {
-    if (!isDemoEnabled()) return fail();
-    await ensureDemoUser();
+  let found: (typeof users.$inferSelect)[];
+  try {
+    // Bootstrap the demo account on first use — only when demo mode is enabled.
+    if (em === DEMO_EMAIL) {
+      if (!isDemoEnabled()) return invalid();
+      await ensureDemoUser();
+    }
+    found = await db.select().from(users).where(eq(users.email, em));
+  } catch (e) {
+    slot.refund(); // a server error is not a failed guess
+    throw e;
   }
-  const found = await db.select().from(users).where(eq(users.email, em));
-  if (!found.length || !(await verifyPassword(password, found[0].password))) return fail();
-  reset(sourceKey);
+  if (!found.length || !(await verifyPassword(password, found[0].password))) return invalid();
+  slot.refund(); // successful logins are not counted
+  if (ip) reset(`login:${em}:${ip}`);
   await createSession(found[0].id);
   return NextResponse.json({ user: toSessionUser(found[0]) });
 }

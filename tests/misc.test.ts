@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { normalizeRole, canManage } from "../src/lib/roles";
-import { hit, peek, reset, clientIp } from "../src/lib/rate-limit";
+import { hit, peek, reset, reserve, clientIp } from "../src/lib/rate-limit";
 import { paginate, extractDocument } from "../src/lib/extract";
 import { toCSV, parseCasesCSV, buildCasesFromRows, normalizeDate } from "../src/lib/csv";
 
@@ -25,6 +25,18 @@ describe("rate limiter", () => {
     reset(key);
   });
 
+  it("reserve counts atomically and refunds on success", () => {
+    const k1 = "r1:" + Math.random(), k2 = "r2:" + Math.random();
+    const slots = Array.from({ length: 5 }, () => reserve([[k1, 3], [k2, 100]], 1000, 0));
+    expect(slots.filter((x) => x.allowed).length).toBe(3); // the 4th and 5th are refused immediately
+    const first = slots[0];
+    if (first.allowed) { first.refund(); first.refund(); } // refund is idempotent
+    expect(reserve([[k1, 3]], 1000, 0).allowed).toBe(true);
+    expect(reserve([[k1, 3]], 1000, 0).allowed).toBe(false);
+    expect(peek(k2, 100, 0).allowed).toBe(true); // refused attempts did not leak onto k2
+    reset(k1); reset(k2);
+  });
+
   it("peek checks the limit without counting an attempt", () => {
     const key = "p:" + Math.random();
     for (let i = 0; i < 5; i++) expect(peek(key, 2, 0).allowed).toBe(true);
@@ -42,6 +54,7 @@ describe("client IP for rate limiting", () => {
   });
   it("uses the right-most X-Forwarded-For hop (added by our proxy) when trusted", () => {
     expect(clientIp(req({ "x-forwarded-for": "6.6.6.6, 9.9.9.9" }), true)).toBe("9.9.9.9");
+    expect(clientIp(req({ "x-forwarded-for": "9.9.9.9", "x-real-ip": "6.6.6.6" }), true)).toBe("9.9.9.9");
     expect(clientIp(req({ "x-real-ip": "5.5.5.5" }), true)).toBe("5.5.5.5");
     expect(clientIp(req({}), true)).toBeNull();
   });

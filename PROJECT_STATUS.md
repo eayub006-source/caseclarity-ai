@@ -50,8 +50,7 @@ CaseClarity AI helps **legal-aid workers** handle client cases faster.
 - Passwords are stored safely (bcrypt hash — never as plain text).
 - Login stays active for 7 days using a secure cookie.
 - Password must be at least **8 characters** (checked on the server).
-- Too many **wrong** passwords (10 in 15 minutes) → blocked for 15 minutes. Correct logins never count.
-  With `TRUST_PROXY=true` (recommended on Vercel) the block applies only to the attacker's IP, so nobody can lock out the real user or the demo account.
+- Wrong passwords are limited: **30 per account** in 15 minutes from anywhere, and with `TRUST_PROXY=true` (recommended on Vercel) **10 per account per IP**, so an attacker's own IP is blocked long before the real user is. Correct logins never count, and simultaneous guesses cannot slip past the limit.
 - If your login expires, the app sends you back to the sign-in page instead of silently losing your work.
 - **Demo account:** `demo@caseclarity.ai` / `demo1234` — only exists when `DEMO_ACCOUNT=true` (or in local development).
 
@@ -161,6 +160,7 @@ CaseClarity AI helps **legal-aid workers** handle client cases faster.
 | 14 | Admin screen to change user roles |
 | 15 | Shared rate limiting (today it is per server instance) |
 | 16 | Encrypted file storage and data-retention rules |
+| 16b | CAPTCHA after repeated failed logins (someone with many IPs can still lock an account for 15 minutes) |
 
 ### 🔵 Integrations
 | # | Task |
