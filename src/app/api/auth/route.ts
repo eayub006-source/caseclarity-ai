@@ -14,12 +14,15 @@ export const dynamic = "force-dynamic";
 // - Passwords are bcrypt-hashed at rest (never plaintext).
 // - Successful login/signup creates a server-side session; the raw token is
 //   returned only in an httpOnly cookie. Only its SHA-256 hash is stored.
-// - Login and signup are rate-limited per IP (and per IP + email for login).
+// - Login is rate-limited per account (email), whatever IP the attempts come
+//   from, plus per client IP when the IP can be trusted (TRUST_PROXY=true).
+//   Signup is rate-limited per trusted IP, or globally when no IP is known.
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const LOGIN_LIMIT = 10, LOGIN_WINDOW = 15 * 60 * 1000;
-const IP_LIMIT = 50;
-const SIGNUP_LIMIT = 10, SIGNUP_WINDOW = 60 * 60 * 1000;
+const LOGIN_LIMIT = 10, LOGIN_WINDOW = 15 * 60 * 1000;   // per account
+const IP_LIMIT = 50;                                       // per trusted IP, all accounts
+const SIGNUP_LIMIT = 10, SIGNUP_WINDOW = 60 * 60 * 1000;   // per trusted IP
+const SIGNUP_GLOBAL_LIMIT = 200;                           // when the IP is unknown
 
 function tooMany(retryAfterSec: number) {
   return NextResponse.json(
@@ -49,7 +52,7 @@ export async function POST(req: Request) {
   const ip = clientIp(req);
 
   if (action === "signup") {
-    const rl = hit(`signup:${ip}`, SIGNUP_LIMIT, SIGNUP_WINDOW);
+    const rl = ip ? hit(`signup:${ip}`, SIGNUP_LIMIT, SIGNUP_WINDOW) : hit("signup:global", SIGNUP_GLOBAL_LIMIT, SIGNUP_WINDOW);
     if (!rl.allowed) return tooMany(rl.retryAfterSec);
     if (!EMAIL_RE.test(em)) return NextResponse.json({ error: "Enter a valid email address" }, { status: 400 });
     if (password.length < MIN_PASSWORD_LENGTH) {
@@ -74,10 +77,14 @@ export async function POST(req: Request) {
   }
 
   // Login (default).
-  const ipRl = hit(`login-ip:${ip}`, IP_LIMIT, LOGIN_WINDOW);
-  const rl = hit(`login:${ip}:${em}`, LOGIN_LIMIT, LOGIN_WINDOW);
-  if (!ipRl.allowed) return tooMany(ipRl.retryAfterSec);
+  // The per-account limit does not depend on the IP, so rotating or spoofing
+  // X-Forwarded-For cannot reset it.
+  const rl = hit(`login:${em}`, LOGIN_LIMIT, LOGIN_WINDOW);
   if (!rl.allowed) return tooMany(rl.retryAfterSec);
+  if (ip) {
+    const ipRl = hit(`login-ip:${ip}`, IP_LIMIT, LOGIN_WINDOW);
+    if (!ipRl.allowed) return tooMany(ipRl.retryAfterSec);
+  }
 
   // Bootstrap the demo account on first use — only when demo mode is enabled.
   if (em === DEMO_EMAIL) {
@@ -88,7 +95,7 @@ export async function POST(req: Request) {
   if (!found.length || !(await verifyPassword(password, found[0].password))) {
     return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
   }
-  reset(`login:${ip}:${em}`);
+  reset(`login:${em}`);
   await createSession(found[0].id);
   return NextResponse.json({ user: toSessionUser(found[0]) });
 }

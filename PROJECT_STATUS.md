@@ -50,7 +50,7 @@ CaseClarity AI helps **legal-aid workers** handle client cases faster.
 - Passwords are stored safely (bcrypt hash — never as plain text).
 - Login stays active for 7 days using a secure cookie.
 - Password must be at least **8 characters** (checked on the server).
-- Too many wrong passwords → blocked for 15 minutes.
+- Too many wrong passwords for one account (10 in 15 minutes) → that account is blocked for 15 minutes, no matter which IP the attempts come from.
 - If your login expires, the app sends you back to the sign-in page instead of silently losing your work.
 - **Demo account:** `demo@caseclarity.ai` / `demo1234` — only exists when `DEMO_ACCOUNT=true` (or in local development).
 

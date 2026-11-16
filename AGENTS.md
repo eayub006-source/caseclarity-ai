@@ -85,7 +85,7 @@ Runtime: **Node.js 22** (developed and tested on v22.23.4) and **PostgreSQL 15**
 npm install
 cp .env.example .env            # set DATABASE_URL; LLM_API_KEY is optional
 # drizzle.config.ts reads DATABASE_URL from .env
-npx drizzle-kit push            # create or update tables from src/db/schema.ts
+npm run db:push                 # create or update tables from src/db/schema.ts
 npm run dev                     # http://localhost:3000
 ```
 
@@ -103,7 +103,7 @@ Keep `GET /api/health` public — the hosting/preview pipeline builds the app, s
 
 ### Enabling the real LLM (optional)
 
-Set `LLM_API_KEY` (and optionally `LLM_BASE_URL` and `LLM_MODEL`) in `.env` and restart. The endpoint targets OpenAI-compatible Chat Completions APIs that support `response_format: {type: "json_object"}`. This path has not yet been verified with a live key (CONTEXT.md KI-8), and some UI labels say "Demo Mode" regardless of the mode (KI-11).
+Set `LLM_API_KEY` (and optionally `LLM_BASE_URL` and `LLM_MODEL`) in `.env` and restart. The endpoint targets OpenAI-compatible Chat Completions APIs that support `response_format: {type: "json_object"}`. Citations are verified server-side (`src/lib/llm.ts`). This path was tested against a mock OpenAI-compatible server, not yet with a live key.
 
 ### Useful commands
 
@@ -293,7 +293,7 @@ curl -s -c /tmp/cj -X POST localhost:3000/api/auth \
   -d '{"action":"login","email":"demo@caseclarity.ai","password":"demo1234"}' # expect {"user":…}
 curl -s -b /tmp/cj -X POST localhost:3000/api/extract -F "file=@sample.pdf" # expect extracted text
 curl -s -b /tmp/cj -X POST localhost:3000/api/analyze \
-  -H "Content-Type: application/json" -d '{"text":"Maria Gonzalez pays $1,450"}' # expect a mode field
+  -H "Content-Type: application/json" -d '{"caseId":"<a case id>"}'       # expect a mode field
 ```
 
 **UI check:** sign in → Dashboard → open CC-2026-003 → Recommendation tab → Approve with a comment → the decision appears on the case's Audit tab and on `/audit`. Use "Reset demo data" afterwards.

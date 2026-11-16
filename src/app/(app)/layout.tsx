@@ -21,11 +21,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
   const pendingReviews = recs.filter(r => r.status === "pending").length;
   const modeBadge = config.aiMode === "llm" ? <Badge tone="blue">Live AI</Badge> : <Badge tone="amber">Demo Mode</Badge>;
 
   const doReset = async () => {
-    if (!window.confirm("Reset the workspace to the fictional demo data? All cases, documents and audit entries will be replaced.")) return;
+    // Two-click confirmation (no window.confirm: sandboxed previews block it).
+    if (!confirmReset) {
+      setConfirmReset(true);
+      setTimeout(() => setConfirmReset(false), 6000);
+      return;
+    }
+    setConfirmReset(false);
     setResetting(true);
     try {
       await resetDemo();
@@ -92,7 +99,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <button onClick={() => { logout(); router.push("/login"); }} title="Sign out" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-rose-600"><LogOut size={16} /></button>
         </div>
         {isManager && config.demoAccount && (
-          <button onClick={doReset} disabled={resetting} className="mt-2 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] font-semibold text-slate-400 hover:bg-slate-100 disabled:opacity-50"><RotateCcw size={12} className={resetting ? "animate-spin" : ""} /> {resetting ? "Resetting…" : "Reset demo data"}</button>
+          <button onClick={doReset} disabled={resetting} className="mt-2 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] font-semibold text-slate-400 hover:bg-slate-100 disabled:opacity-50"><RotateCcw size={12} className={resetting ? "animate-spin" : ""} /> {resetting ? "Resetting…" : confirmReset ? "Click again to replace all case data" : "Reset demo data"}</button>
         )}
       </div>
     </div>

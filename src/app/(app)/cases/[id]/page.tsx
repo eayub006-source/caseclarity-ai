@@ -27,6 +27,7 @@ export default function CaseDetailPage() {
   const [modifiedText, setModifiedText] = useState("");
   const [editing, setEditing] = useState(false);
   const [viewDoc, setViewDoc] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const c = cases.find(x => x.id === id);
@@ -153,7 +154,13 @@ export default function CaseDetailPage() {
   };
 
   const removeCase = async () => {
-    if (!window.confirm(`Delete ${c.caseNumber} (${c.clientName}) with all its documents, facts and recommendations? The audit history is kept.`)) return;
+    // Two-click confirmation (no window.confirm: sandboxed previews block it).
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      notify(`Click "Confirm delete" to remove ${c.caseNumber} with its documents, facts and recommendations. The audit history is kept.`, "warn");
+      setTimeout(() => setConfirmDelete(false), 6000);
+      return;
+    }
     try {
       await deleteCase(id);
       notify(`${c.caseNumber} deleted.`);
@@ -204,7 +211,7 @@ export default function CaseDetailPage() {
           <Btn variant="secondary" onClick={() => fileRef.current?.click()} disabled={uploading > 0}>{uploading > 0 ? <Loader2 size={15} className="animate-spin" /> : <UploadCloud size={15} />} {uploading > 0 ? `Uploading ${uploading}…` : "Upload Documents"}</Btn>
           <Btn variant="secondary" onClick={() => requestDocs("Case worker requested more documents from client")}><FilePlus size={15} /> Request Documents</Btn>
           <Btn variant="ghost" onClick={flag}><Flag size={15} /> Flag for Investigation</Btn>
-          {isManager && <Btn variant="ghost" className="ml-auto text-rose-600 hover:bg-rose-50" onClick={removeCase}><Trash2 size={15} /> Delete case</Btn>}
+          {isManager && <Btn variant="ghost" className="ml-auto text-rose-600 hover:bg-rose-50" onClick={removeCase}><Trash2 size={15} /> {confirmDelete ? "Confirm delete" : "Delete case"}</Btn>}
           <input ref={fileRef} type="file" multiple accept=".pdf,.docx,.txt,.csv,.md" className="hidden" onChange={e => { if (e.target.files) handleFiles(e.target.files); e.target.value = ""; }} />
         </div>
       </Card>

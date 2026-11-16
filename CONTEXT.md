@@ -518,7 +518,7 @@ npm run build
 
 > **Status (branch `fix/known-issues`, 2026-11-16): KI-1 to KI-16 are fixed**, except the parts listed under *Still open* below. The original descriptions are kept for history.
 >
-> Still open: OCR for scanned PDFs and legacy `.doc` (KI-10); storing original files (KI-10); real DOCX page boundaries — DOCX/TXT/CSV pages are now *estimated* at ~1,800 characters (KI-9); organization scoping (roles exist, but all users of a deployment share one workspace) and password reset / email verification (KI-14); a live-key test of LLM mode — it was verified end-to-end against a mock OpenAI-compatible server (KI-8). The login rate limiter is in-memory per instance.
+> Still open: OCR for scanned PDFs and legacy `.doc` (KI-10); storing original files (KI-10); real DOCX page boundaries — DOCX/TXT/CSV pages are now *estimated* at ~1,800 characters (KI-9); organization scoping (roles exist, but all users of a deployment share one workspace) and password reset / email verification (KI-14); a live-key test of LLM mode — it was verified end-to-end against a mock OpenAI-compatible server (KI-8). The login rate limiter is in-memory per instance; it limits per account always, and per IP only when `TRUST_PROXY=true`.
 
 These were verified during the documentation review by reading the code, inspecting the database and running `runAnalysis()` on the seed data.
 

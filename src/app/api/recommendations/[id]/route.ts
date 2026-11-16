@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { recommendations } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, notInArray, or } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { requireUser, unauthorized } from "@/lib/auth-server";
 import { badRequest, isUuid, notFound, oneOf, readJson, str } from "@/lib/validate";
@@ -24,12 +24,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const summary = str(body.summary, 2000);
   if (status === "modified" && !summary) return badRequest("A modified recommendation needs the new text");
 
-  const [current] = await db.select({ status: recommendations.status }).from(recommendations).where(eq(recommendations.id, id));
-  if (!current) return notFound();
-  if (current.status === "approved" || current.status === "rejected") {
-    return NextResponse.json({ error: `This recommendation was already ${current.status} and is locked.` }, { status: 409 });
-  }
-
+  // The lock check is part of the UPDATE itself, so two simultaneous reviews
+  // cannot both succeed: the second one matches no row.
   const [row] = await db
     .update(recommendations)
     .set({
@@ -39,7 +35,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       reviewedAt: new Date(),
       ...(status === "modified" ? { summary } : {}),
     })
-    .where(eq(recommendations.id, id))
+    .where(and(eq(recommendations.id, id), or(isNull(recommendations.status), notInArray(recommendations.status, ["approved", "rejected"]))))
     .returning();
-  return NextResponse.json({ recommendation: row });
+  if (row) return NextResponse.json({ recommendation: row });
+
+  // Nothing updated: either it does not exist or it is already locked.
+  const [current] = await db.select({ status: recommendations.status }).from(recommendations).where(eq(recommendations.id, id));
+  if (!current) return notFound();
+  return NextResponse.json({ error: `This recommendation was already ${current.status} and is locked.` }, { status: 409 });
 }

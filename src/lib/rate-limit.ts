@@ -30,8 +30,20 @@ function sweep(now: number) {
   for (const [k, b] of buckets) if (b.resetAt <= now) buckets.delete(k);
 }
 
-export function clientIp(req: Request): string {
+// Client IP for rate limiting, or null when it cannot be trusted.
+// X-Forwarded-For / X-Real-IP are set by the client unless a reverse proxy
+// overwrites them, so they are only used when TRUST_PROXY=true (e.g. on
+// Vercel or behind nginx configured to set them). Callers must never rely on
+// the IP alone: per-account limits apply regardless.
+export function clientIp(req: Request, trustProxy = process.env.TRUST_PROXY === "true"): string | null {
+  if (!trustProxy) return null;
+  const real = req.headers.get("x-real-ip")?.trim();
+  if (real) return real;
   const fwd = req.headers.get("x-forwarded-for");
-  if (fwd) return fwd.split(",")[0].trim();
-  return req.headers.get("x-real-ip") || "local";
+  if (fwd) {
+    const hops = fwd.split(",").map((h) => h.trim()).filter(Boolean);
+    // The right-most entry is the one appended by our own proxy.
+    if (hops.length) return hops[hops.length - 1];
+  }
+  return null;
 }

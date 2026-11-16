@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { normalizeRole, canManage } from "../src/lib/roles";
-import { hit, reset } from "../src/lib/rate-limit";
+import { hit, reset, clientIp } from "../src/lib/rate-limit";
 import { paginate, extractDocument } from "../src/lib/extract";
 import { toCSV, parseCasesCSV, buildCasesFromRows, normalizeDate } from "../src/lib/csv";
 
@@ -23,6 +23,18 @@ describe("rate limiter", () => {
     expect(blocked.retryAfterSec).toBe(1);
     expect(hit(key, 3, 1000, 1001).allowed).toBe(true);
     reset(key);
+  });
+});
+
+describe("client IP for rate limiting", () => {
+  const req = (h: Record<string, string>) => new Request("http://x/", { headers: h });
+  it("ignores spoofable headers unless a trusted proxy is configured", () => {
+    expect(clientIp(req({ "x-forwarded-for": "1.2.3.4" }), false)).toBeNull();
+  });
+  it("uses the right-most X-Forwarded-For hop (added by our proxy) when trusted", () => {
+    expect(clientIp(req({ "x-forwarded-for": "6.6.6.6, 9.9.9.9" }), true)).toBe("9.9.9.9");
+    expect(clientIp(req({ "x-real-ip": "5.5.5.5" }), true)).toBe("5.5.5.5");
+    expect(clientIp(req({}), true)).toBeNull();
   });
 });
 
