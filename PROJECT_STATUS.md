@@ -50,7 +50,8 @@ CaseClarity AI helps **legal-aid workers** handle client cases faster.
 - Passwords are stored safely (bcrypt hash — never as plain text).
 - Login stays active for 7 days using a secure cookie.
 - Password must be at least **8 characters** (checked on the server).
-- Too many wrong passwords for one account (10 in 15 minutes) → that account is blocked for 15 minutes, no matter which IP the attempts come from.
+- Too many **wrong** passwords (10 in 15 minutes) → blocked for 15 minutes. Correct logins never count.
+  With `TRUST_PROXY=true` (recommended on Vercel) the block applies only to the attacker's IP, so nobody can lock out the real user or the demo account.
 - If your login expires, the app sends you back to the sign-in page instead of silently losing your work.
 - **Demo account:** `demo@caseclarity.ai` / `demo1234` — only exists when `DEMO_ACCOUNT=true` (or in local development).
 
@@ -139,7 +140,7 @@ CaseClarity AI helps **legal-aid workers** handle client cases faster.
 | 1 | **Test the real AI with a real API key** | Only tested against a fake AI server so far. |
 | 2 | **Click through the whole app in a browser** | Code and APIs are tested, screens were not checked by hand after the fixes. |
 | 3 | **Merge `fix/known-issues` into `main`** | The fixes are on a separate branch. |
-| 4 | **Set `DEMO_ACCOUNT=true` on the judges' deployment** | Otherwise the demo login is turned off in production. |
+| 4 | **Set `DEMO_ACCOUNT=true` and `TRUST_PROXY=true` on the judges' deployment** | Otherwise the demo login is off in production, and strangers could temporarily lock it with wrong passwords. |
 | 5 | **Run `npm run db:push` + "Reset demo data" on existing databases** | New database columns were added. |
 
 ### 🟠 Medium priority (AI quality)

@@ -20,6 +20,13 @@ export function hit(key: string, limit: number, windowMs: number, now = Date.now
   return { allowed: true, retryAfterSec: 0 };
 }
 
+// Checks whether `key` is over its limit WITHOUT counting an attempt.
+export function peek(key: string, limit: number, now = Date.now()): RateResult {
+  const b = buckets.get(key);
+  if (!b || b.resetAt <= now || b.count < limit) return { allowed: true, retryAfterSec: 0 };
+  return { allowed: false, retryAfterSec: Math.ceil((b.resetAt - now) / 1000) };
+}
+
 export function reset(key: string) {
   buckets.delete(key);
 }

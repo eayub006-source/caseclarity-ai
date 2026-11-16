@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { normalizeRole, canManage } from "../src/lib/roles";
-import { hit, reset, clientIp } from "../src/lib/rate-limit";
+import { hit, peek, reset, clientIp } from "../src/lib/rate-limit";
 import { paginate, extractDocument } from "../src/lib/extract";
 import { toCSV, parseCasesCSV, buildCasesFromRows, normalizeDate } from "../src/lib/csv";
 
@@ -22,6 +22,15 @@ describe("rate limiter", () => {
     expect(blocked.allowed).toBe(false);
     expect(blocked.retryAfterSec).toBe(1);
     expect(hit(key, 3, 1000, 1001).allowed).toBe(true);
+    reset(key);
+  });
+
+  it("peek checks the limit without counting an attempt", () => {
+    const key = "p:" + Math.random();
+    for (let i = 0; i < 5; i++) expect(peek(key, 2, 0).allowed).toBe(true);
+    hit(key, 2, 1000, 0); hit(key, 2, 1000, 0);
+    expect(peek(key, 2, 10).allowed).toBe(false);
+    expect(peek(key, 2, 1001).allowed).toBe(true);
     reset(key);
   });
 });
