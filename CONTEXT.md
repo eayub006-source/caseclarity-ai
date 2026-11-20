@@ -279,7 +279,7 @@ All routes live under `src/app/api/` and return JSON. **Session** means a valid 
 | Method and path | Auth | Request | Response / behavior |
 |---|---|---|---|
 | `GET /api/health` | none | — | `{"ok":true}`; `500 {"ok":false}` if the database query fails |
-| `GET /api/auth` | session | — | `{user}`, or `401 {"user":null}` |
+| `GET /api/auth` | session | — | `{user}`, or `200 {"user":null}` when signed out |
 | `POST /api/auth` | none | `{action:"login", email, password}` | Ensures the demo user exists, verifies the bcrypt hash, creates a session and cookie → `{user}`; `400` missing fields, `401` bad credentials |
 | `POST /api/auth` | none | `{action:"signup", name, email, password}` | Hashes the password, creates user and session → `201 {user}`; `409` if the email exists |
 | `POST /api/auth` | none | `{action:"logout"}` | Deletes the session row and cookie → `{ok:true}` |
@@ -567,40 +567,52 @@ These were verified during the documentation review by reading the code, inspect
 
 ## 17. Remaining work
 
+> Updated 2026-11-20 against the code on `main`. Ticked items are verified in the code; the plain-language summary is in [PROJECT_STATUS.md](./PROJECT_STATUS.md).
+
 **P0 — before the final demo / submission**
 
-- [x] Add a `.gitignore` (`node_modules/`, `.next/`, `.env`, `.env*.local`, `*.tsbuildinfo`, `next-env.d.ts`) — done.
-- [ ] Persist completeness (KI-1).
-- [ ] Return lists newest-first (KI-2).
-- [ ] RFC 4180 CSV export with `Papa.unparse()` (KI-3).
-- [ ] Replace hardcoded counts with live data (KI-4).
-- [ ] Make the Demo Mode labels reflect the actual mode, and fix the stale upload text (KI-11).
+- [x] Add a `.gitignore`.
+- [x] Persist completeness (KI-1).
+- [x] Return lists newest-first (KI-2).
+- [x] RFC 4180 CSV export with `Papa.unparse()` (KI-3).
+- [x] Replace hardcoded counts with live data (KI-4).
+- [x] Make the Demo Mode labels reflect the actual mode, and fix the stale upload text (KI-11).
+- [x] Merge `fix/known-issues` into `main`.
+- [x] Full UI walkthrough in a browser (desktop and 390 px mobile) — done 2026-11-20; it found and fixed mobile overflow on the dashboard and case documents, a timezone shift on DB-defaulted timestamps, and a 401 console error on signed-out pages.
+- [ ] Test LLM mode with a live API key (KI-8).
+- [ ] Judges' deployment: `DEMO_ACCOUNT=true`, `TRUST_PROXY=true`, `TRUSTED_IP_HEADER`; run `npm run db:push` and *Reset demo data* on it.
 
 **P1 — AI quality and reliability**
 
-- [ ] Validate LLM output against a schema; flag or reject facts whose source document cannot be matched instead of falling back to the first document; send explicit page markers in the prompt; test with a real key (KI-8).
-- [ ] Classify documents by type instead of filename keywords for the checklist (KI-5).
-- [ ] Improve the demo engine: labelled fields (income, rent, deadlines), context-aware contradiction checks, a correct "Proceed" summary (KI-6, KI-7).
+- [x] Send explicit document/page markers in the LLM prompt; verify every citation server-side and mark unmatched facts "Unverified" instead of falling back to the first document (KI-8).
+- [x] Synonym-based required-document checklist shared by the UI and the engine (KI-5).
+- [x] Improve the demo engine: labelled amounts and dates, like-for-like contradiction checks, an "obtain remaining documents" branch (KI-6, KI-7).
+- [ ] Classify documents by content rather than filename/text keywords.
 - [ ] Store contradictions as first-class records and list them on the Analysis tab.
 - [ ] Per-document summaries.
-- [ ] OCR for scanned PDFs; real page boundaries for DOCX (KI-9, KI-10).
+- [ ] OCR for scanned PDFs; legacy `.doc`; real page boundaries for DOCX; keep original files (KI-9, KI-10).
 
 **P2 — Security and compliance**
 
-- [ ] Role-based access (case worker, supervisor, admin) and organization scoping.
-- [ ] Rate limiting and lockout on `/api/auth`; CSRF protection; expired-session cleanup; password reset; server-side password rules.
-- [ ] Audit immutability: take `actor` from the session only, with no update or delete paths.
-- [ ] Encrypted storage of original documents with retention rules; protect `/api/seed` in production.
+- [x] Roles (`case_worker`, `senior_case_worker`, `admin`) with manager-only actions.
+- [x] Login/signup rate limiting; origin-checked API (`src/proxy.ts`); expired-session cleanup; server-side password rules.
+- [x] Audit actor and reviewer taken from the session; the audit API has no update or delete paths.
+- [x] `/api/seed` requires a session and demo mode; reset is manager-only.
+- [ ] Organization scoping (all users of a deployment share one workspace).
+- [ ] Password reset and email verification; admin screen for roles; CAPTCHA after repeated failures; shared (non-in-memory) rate limiting.
+- [ ] Encrypted storage of original documents with retention rules.
 
 **P3 — Integrations**
 
+- [x] Import dates, priority and status from CSV (KI-12).
+- [ ] Column-mapping step for CSV imports.
 - [ ] Real Google Drive integration (OAuth 2.0 + Drive API). Keep the "Simulated" label until then.
-- [ ] Import dates, priority and status from CSV; add a column-mapping step (KI-12).
 
 **P4 — Testing and tooling**
 
-- [ ] API integration tests (sessions, 401s, CRUD) and end-to-end UI tests.
-- [ ] An `npm test` script, a CI pipeline, and moving test-only packages to `devDependencies`.
+- [x] `npm test` script; test-only packages in `devDependencies`.
+- [x] CI pipeline: `.github/workflows/ci.yml` runs tests, typecheck, lint and build on every push and pull request.
+- [ ] API integration tests (sessions, 401s, CRUD) and end-to-end UI tests in the repo.
 
 **P5 — Evaluation**
 
@@ -616,3 +628,4 @@ These were verified during the documentation review by reading the code, inspect
 4. **Documentation** — `CONTEXT.md`, `AGENTS.md` and `PROBLEM_STATEMENT.md` added. No application code was changed.
 5. **Repository setup** — `.gitignore` added and the project committed to a git repository on the `main` branch. No application code was changed.
 6. **Known-issues fix pass** (`fix/known-issues`) — completeness persisted; newest-first lists; RFC 4180 exports; live counts; mode-aware labels and a per-recommendation `engine`; synonym-based document checklist shared by the UI and engine; reworked demo engine (case client name, labelled amounts, like-for-like contradictions, an "obtain remaining documents" branch); LLM prompt with document/page markers and server-side citation verification (`verified` flag); estimated pages for DOCX/TXT; CSV import of date/priority/status; Drive case picker; checked writes with error toasts and session-expiry handling; server-side validation; roles (`case_worker`, `senior_case_worker`, `admin`); login rate limiting; origin-checked API (`src/proxy.ts`); session-derived audit actor and reviewer; locked reviews; cascade deletes; `DEMO_ACCOUNT` flag; `drizzle.config.ts`; `npm test`. 41 unit tests.
+7. **Release pass** (2026-11-20, merged to `main`) — Next.js 16.4.2 → 16.4.6 (security advisories); browser walkthrough of every page and flow; mobile overflow fixes (`*:min-w-0` on dashboard and case-detail grids); the DB pool pins the session timezone to UTC so `defaultNow()` timestamps are not shifted on non-UTC databases; `GET /api/auth` returns `200 {"user":null}` when signed out; GitHub Actions CI. 46 unit tests.

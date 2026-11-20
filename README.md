@@ -352,7 +352,7 @@ LLM_MODEL=gpt-4o-mini
 npm test
 ```
 
-The suite contains **41 unit tests** in `tests/` and does not need a database:
+The suite contains **46 unit tests** in `tests/` and does not need a database:
 
 | File | What it covers |
 |---|---|
@@ -372,7 +372,9 @@ npm run lint
 npm run build
 ```
 
-API routes and UI flows are not yet covered by automated tests in the repo.
+GitHub Actions (`.github/workflows/ci.yml`) runs this sequence on every push and pull request.
+
+API routes and UI flows are not yet covered by automated tests in the repo; they were checked with a scripted browser walkthrough (desktop and mobile) on 20 November 2026.
 
 ## API overview
 

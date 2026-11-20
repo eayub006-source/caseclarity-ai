@@ -15,6 +15,10 @@ export const pool =
   globalForDb.__arenaNextJsPostgresqlPool ??
   new Pool({
     connectionString: databaseUrl,
+    // Columns are `timestamp without time zone` and Drizzle reads them as UTC,
+    // so DB-side defaults (defaultNow) must also be written in UTC. Without this,
+    // a database whose timezone is not UTC shifts every defaulted timestamp.
+    options: "-c timezone=UTC",
   });
 
 if (process.env.NODE_ENV !== "production") {

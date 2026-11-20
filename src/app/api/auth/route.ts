@@ -46,7 +46,8 @@ function tooMany(retryAfterSec: number) {
 
 export async function GET() {
   const user = await getSessionUser();
-  if (!user) return NextResponse.json({ user: null }, { status: 401 });
+  // Not being signed in is a normal state for this check, not an error.
+  if (!user) return NextResponse.json({ user: null });
   return NextResponse.json({ user });
 }
 

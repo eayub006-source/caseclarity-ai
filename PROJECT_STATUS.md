@@ -1,7 +1,7 @@
 # Project Status — CaseClarity AI
 
 > A plain-language summary of **what is done** and **what is remaining**.
-> Last updated: **16 November 2026** · Branch: `fix/known-issues`
+> Last updated: **20 November 2026** · Branch: `main`
 >
 > For technical details see [CONTEXT.md](./CONTEXT.md) (full inventory) and [AGENTS.md](./AGENTS.md) (how to work on the code).
 
@@ -35,7 +35,8 @@ CaseClarity AI helps **legal-aid workers** handle client cases faster.
 | CSV import / export | ✅ Done |
 | Google Drive import | 🟡 Simulated only |
 | Security basics | ✅ Done (see §3.8) |
-| Automated tests | ✅ 41 unit tests + 40 end-to-end API checks (run manually) |
+| Automated tests | ✅ 46 unit tests, run by GitHub Actions CI on every push · 40 API checks and a full browser walkthrough (run manually) |
+| Browser walkthrough (desktop + mobile) | ✅ Done 20 Nov 2026 — every page and flow works |
 | OCR for scanned PDFs | ❌ Not started |
 | Organizations / teams | ❌ Not started |
 | Password reset | ❌ Not started |
@@ -127,7 +128,8 @@ CaseClarity AI helps **legal-aid workers** handle client cases faster.
 ### 3.11 Developer setup
 - `npm run dev` · `npm test` · `npm run lint` · `npm run typecheck` · `npm run build` · `npm run db:push`
 - Database settings come from `.env` (`DATABASE_URL`).
-- Typecheck, lint, build and all 41 tests pass.
+- Typecheck, lint, build and all 46 tests pass — automatically on every push (GitHub Actions).
+- Next.js 16.4.6 (security fixes); `npm audit` finds 0 vulnerabilities in production packages.
 
 ---
 
@@ -137,8 +139,8 @@ CaseClarity AI helps **legal-aid workers** handle client cases faster.
 | # | Task | Why it matters |
 |---|---|---|
 | 1 | **Test the real AI with a real API key** | Only tested against a fake AI server so far. |
-| 2 | **Click through the whole app in a browser** | Code and APIs are tested, screens were not checked by hand after the fixes. |
-| 3 | **Merge `fix/known-issues` into `main`** | The fixes are on a separate branch. |
+| 2 | ~~Click through the whole app in a browser~~ ✅ | Done 20 Nov 2026 (desktop + phone). Found and fixed: dashboard and documents overflowing on phones, dates shifted by the time zone on some databases, a console error on signed-out pages. |
+| 3 | ~~Merge `fix/known-issues` into `main`~~ ✅ | Done 20 Nov 2026. |
 | 4 | **Set `DEMO_ACCOUNT=true`, `TRUST_PROXY=true` and `TRUSTED_IP_HEADER` (Vercel: `x-vercel-forwarded-for`) on the judges' deployment** | Otherwise the demo login is off in production, and strangers could temporarily lock it with wrong passwords. |
 | 5 | **Run `npm run db:push` + "Reset demo data" on existing databases** | New database columns were added. |
 
@@ -173,7 +175,7 @@ CaseClarity AI helps **legal-aid workers** handle client cases faster.
 |---|---|
 | 19 | Automated API tests in the repo (they were run manually against a test database) |
 | 20 | Automated browser (end-to-end) tests |
-| 21 | CI pipeline (run tests on every push) |
+| 21 | ~~CI pipeline (run tests on every push)~~ ✅ Done — `.github/workflows/ci.yml` |
 | 22 | **Real evaluation**: timed study with case workers + accuracy benchmark, to replace the placeholder numbers on the Evaluation page |
 
 ---

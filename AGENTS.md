@@ -277,7 +277,7 @@ export async function POST(req: Request) {
 Run these from the project root before every commit:
 
 ```bash
-npm test                                    # 41 tests — all must pass
+npm test                                    # 46 tests — all must pass
 npx next typegen                            # generate route types
 npm exec tsc -- --noEmit --pretty false     # type check
 npm run lint                                # ESLint (0 problems at last review)

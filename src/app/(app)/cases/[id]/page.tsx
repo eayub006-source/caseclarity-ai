@@ -227,7 +227,7 @@ export default function CaseDetailPage() {
       </div>
 
       {tab === "overview" && (
-        <div className="grid gap-5 lg:grid-cols-3">
+        <div className="grid gap-5 lg:grid-cols-3 *:min-w-0">
           <Card className="p-5 lg:col-span-2">
             <h2 className="text-sm font-extrabold text-[#0f2043]">Case Summary</h2>
             <p className="mt-2 text-sm leading-relaxed text-slate-600">{c.description}</p>
@@ -275,7 +275,7 @@ export default function CaseDetailPage() {
           {caseDocs.length === 0 ? (
             <EmptyState icon={<FileText size={22} />} title="No documents yet" desc="Upload at least one document, then run AI Analysis to extract facts and generate a recommendation." />
           ) : (
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-3 md:grid-cols-2 *:min-w-0">
               {caseDocs.map(d => (
                 <Card key={d.id} className="p-4">
                   <div className="flex items-start gap-3">
@@ -325,7 +325,7 @@ export default function CaseDetailPage() {
                   </table>
                 </div>
               </Card>
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 md:grid-cols-2 *:min-w-0">
                 <Card className="p-5">
                   <h3 className="flex items-center gap-2 text-sm font-extrabold text-rose-700"><AlertTriangle size={15} /> Missing Information ({missing.length})</h3>
                   {missing.length === 0 ? <p className="mt-2 text-xs text-slate-500">No required documents missing. All checklist items are present.</p> : <ul className="mt-2 space-y-1.5 text-xs text-slate-600">{missing.map(m => <li key={m} className="flex gap-2"><XCircle size={13} className="mt-0.5 shrink-0 text-rose-500" />{m}</li>)}</ul>}

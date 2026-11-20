@@ -55,7 +55,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-3">
+      <div className="grid gap-5 lg:grid-cols-3 *:min-w-0">
         <Card className="p-5 lg:col-span-2">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-extrabold text-[#0f2043]">Cases by Status</h2>
@@ -93,7 +93,7 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid gap-5 lg:grid-cols-2 *:min-w-0">
         <Card className="p-5">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-extrabold text-[#0f2043]">Recent Cases</h2>
