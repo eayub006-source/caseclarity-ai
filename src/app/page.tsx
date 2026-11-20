@@ -85,12 +85,7 @@ export default function Landing() {
                     <div className="flex gap-2"><FileText size={13} className="mt-0.5 shrink-0 text-blue-600" /><span><b>Pay_Stub_Mar.pdf</b> · p.1 — “Gross $5,800/month ($69,600/year)”</span></div>
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white">✓ Approve</span>
-                  <span className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-600">✎ Modify</span>
-                  <span className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700">✕ Reject</span>
-                  <span className="ml-auto text-[11px] font-semibold text-slate-400">Demo confidence — uncalibrated</span>
-                </div>
+                <div className="text-right text-[11px] font-semibold text-slate-400">Demo confidence — uncalibrated</div>
               </div>
             </div>
             <div className="mt-4 grid grid-cols-3 gap-3 text-center">
