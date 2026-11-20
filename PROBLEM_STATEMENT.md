@@ -91,7 +91,7 @@ It is a working full-stack prototype built for the hackathon, and it uses fictio
 | Honest uncertainty | Confidence is labeled as an uncalibrated heuristic; gaps and caveats are shown, not hidden |
 | Full auditability | Uploads, analyses, recommendations and review actions are stored with the actor and a timestamp |
 | Works with messy reality | A tolerant CSV import with a visible validation report; the Drive import is clearly marked as simulated |
-| Privacy and safety by design | Fictional data, server-side secrets, hashed passwords, httpOnly session cookies; only extracted text is stored |
+| Privacy and safety by design | Fictional data; documents are read in the browser and never uploaded; only extracted text is kept; server-side secrets; hashed passwords |
 | Graceful degradation | Without an LLM key, a transparent deterministic demo engine keeps the whole workflow usable — and is labeled as such |
 
 ---
@@ -107,15 +107,15 @@ It is a working full-stack prototype built for the hackathon, and it uses fictio
 
 ### 5.2 Technical approach
 
-- **One full-stack TypeScript codebase on the Next.js App Router.** Route Handlers act as the backend — the brief allowed an equivalent to Python/FastAPI — serving the REST API, document extraction and the LLM proxy.
-- **PostgreSQL with Drizzle ORM** for users, sessions, cases, documents, extracted facts, recommendations and audit logs.
-- **Server-side document extraction:** PDF.js (through `unpdf`) reads PDFs page by page so facts can cite pages, and `mammoth` reads DOCX files.
-- **Dual-mode analysis:** an OpenAI-compatible LLM called from the server with a structured-JSON prompt that requires citations, or — when no key is configured — a deterministic, rule-based demo engine with per-document, per-page attribution.
+- **One TypeScript codebase on the Next.js App Router**, deployed to **Cloudflare Workers** through vinext. Route Handlers act as the backend — the brief allowed an equivalent to Python/FastAPI — and serve the LLM proxy.
+- **Demo build without a database (current).** The fictional dataset ships in the repository (`src/data/demo-data.ts`); each visitor's browser keeps its own copy in IndexedDB. The rules a backend enforces — validation, case numbering, locked reviews, append-only audit — are pure, unit-tested functions (`src/lib/workspace.ts`). An earlier version used **PostgreSQL with Drizzle ORM** and server-side sessions; it is preserved in git history (commit `34dd6c0`) for when a shared workspace is needed.
+- **Document extraction in the browser:** PDF.js (through `unpdf`) reads PDFs page by page so facts can cite pages, and `mammoth` reads DOCX files. Files never leave the device.
+- **Dual-mode analysis:** an OpenAI-compatible LLM called from the server with a structured-JSON prompt that requires citations (every citation is verified against the documents), or — when no key is configured — a deterministic, rule-based demo engine with per-document, per-page attribution.
 - **An explainable recommendation data model:** title, summary, reasoning, confidence, evidence (claim, document, page, snippet), missing information, uncertainties, next steps, status, reviewer and review comment.
-- **Security basics:** bcrypt password hashing, random session tokens stored only as SHA-256 hashes, httpOnly cookies, and authentication on every data endpoint.
+- **Security basics for a demo build:** secrets only on the server, cross-site requests blocked, bcrypt-hashed passwords for new accounts, role checks. Accounts are browser-local, so they identify users rather than protect data — the trade-off is documented in CONTEXT.md §8.
 - **Integration without clean APIs:** RFC 4180 CSV parsing (PapaParse) with validation and duplicate reporting, plus a clearly labeled Google Drive simulation.
 - **Measurable claims:** an evaluation page with illustrative, clearly labeled metrics and a documented method for replacing them with real results.
-- **Quality:** automated tests for document extraction, evidence attribution, password hashing and CSV import.
+- **Quality:** automated tests for the data rules, accounts, document extraction, evidence attribution, LLM citation checks and CSV import, run in CI together with both builds.
 
 ---
 
@@ -126,20 +126,20 @@ Status uses the CONTEXT.md legend: ✅ working · 🟡 working with documented l
 | Brief | Feature | Status |
 |---|---|---|
 | A | Landing page with hero, features, how it works, safety, about and footer | ✅ |
-| B | Email/password sign-up and sign-in; demo account for judges | ✅ |
-| C | Dashboard: case counts, status chart, review queue, recent activity, quick actions | ✅ 🟡 |
+| B | Email/password sign-up and sign-in; one-click demo accounts for judges (two roles) | ✅ 🟡 browser-local accounts |
+| C | Dashboard: case counts, status chart, review queue, recent activity, quick actions | ✅ |
 | D | Drag-and-drop upload; real text extraction for PDF, DOCX and TXT (plus CSV and MD); processing status | ✅ |
-| E | Fact extraction with document, page and snippet; missing-document and contradiction detection | 🟡 demo-engine heuristics; LLM mode not yet verified with a live key |
+| E | Fact extraction with document, page and snippet; missing-document and contradiction detection | 🟡 demo-engine heuristics; LLM mode verified against a mock LLM, not yet with a live key |
 | E | Per-document summaries | ⛔ |
 | F | Explainable recommendation with all eight elements and uncalibrated-confidence labeling | ✅ |
 | G | Approve, modify, reject, comment, request documents, flag for investigation — all recorded | ✅ |
-| H | Global and per-case audit timelines with search, filters and CSV export | ✅ 🟡 |
-| I | CSV import/export with a validation report and dedupe | ✅ 🟡 |
+| H | Global and per-case audit timelines with search, filters and CSV export | ✅ |
+| I | CSV import/export with a validation report and dedupe | ✅ |
 | I | Google Drive import | 🧪 |
 | — | Evaluation page with illustrative metrics | 🟡 illustrative |
 | — | Search and filters (cases, audit trail) | ✅ |
 
-Details of every limitation are listed in CONTEXT.md §16.
+Details of every limitation are listed in CONTEXT.md §16. In this demo build, data is saved per browser rather than in a shared database.
 
 ---
 
@@ -160,41 +160,36 @@ flowchart LR
 
 ### 7.2 Step by step
 
-1. **Upload.** A case worker opens a case (or the Upload page) and drags in PDF, DOCX, TXT, CSV or MD files of up to 10 MB each. → `POST /api/extract`
-2. **Extract.** The server extracts the text — PDFs page by page — and returns the page count and any warning (for example, a scanned PDF without a text layer). The text is saved with the document and a "Document uploaded" event is written to the audit trail. → `POST /api/documents`, `POST /api/audit`
-3. **Analyze.** "Run AI Analysis" sends the case's document text to the server. With an LLM key, the model returns structured JSON with cited facts and a recommendation; otherwise the deterministic demo engine runs in the browser. → `POST /api/analyze`
+1. **Upload.** A case worker opens a case (or the Upload page) and drags in PDF, DOCX, TXT, CSV or MD files of up to 10 MB each.
+2. **Extract.** The browser extracts the text — PDFs page by page — and reports the page count and any warning (for example, a scanned PDF without a text layer). The text is saved with the document and a "Document uploaded" event is written to the audit trail. The file itself is not uploaded or kept.
+3. **Analyze.** With an LLM key, "Run AI Analysis" sends the case's document text to the server, and the model returns structured JSON with cited facts and a recommendation, each citation checked against the documents. Otherwise the deterministic demo engine runs in the browser. → `POST /api/analyze` (Live AI only)
 4. **Recommend.** The extracted facts replace the case's previous facts and a new `pending` recommendation is saved. The Analysis tab lists every fact with its document, page, confidence and quoted snippet.
 5. **Explain.** The Recommendation tab shows the recommendation, why it was generated, the supporting evidence with document and page, the confidence (labeled uncalibrated), missing information, uncertainties and next steps.
-6. **Review.** The case worker approves (the case becomes `completed`), modifies (new text plus a comment), rejects, requests more documents or flags the case for investigation. → `PATCH /api/recommendations/:id`, `PATCH /api/cases/:id`
-7. **Audit.** Every step above is stored with its actor, category and timestamp, and appears on the case's Audit tab and in the global Audit Trail, which can be searched, filtered and exported as CSV. → `POST /api/audit`
+6. **Review.** The case worker approves (the case becomes `completed`), modifies (new text plus a comment), rejects, requests more documents or flags the case for investigation. Approved and rejected recommendations are locked.
+7. **Audit.** Every step above is stored with its actor, category and timestamp, and appears on the case's Audit tab and in the global Audit Trail, which can be searched, filtered and exported as CSV.
 
 ```mermaid
 sequenceDiagram
   actor CW as Case worker
   participant UI as Browser
-  participant API as Next.js API
-  participant DB as PostgreSQL
+  participant IDB as Browser storage (IndexedDB)
+  participant API as Cloudflare Worker
   participant LLM as LLM API
   CW->>UI: Drop files on a case
-  UI->>API: POST /api/extract (file)
-  API-->>UI: Text per page, page count, warnings
-  UI->>API: POST /api/documents and /api/audit
-  API->>DB: Save document and audit entry
+  UI->>UI: Extract text per page (PDF.js / mammoth)
+  UI->>IDB: Save document and audit entry
   CW->>UI: Run AI Analysis
-  UI->>API: POST /api/analyze (case text)
-  alt LLM_API_KEY configured
+  alt LLM_API_KEY configured on the server
+    UI->>API: POST /api/analyze (case + document text)
     API->>LLM: Chat completion with JSON output
     LLM-->>API: Facts and recommendation
-    API-->>UI: mode llm with result
-  else No key or LLM error
-    API-->>UI: mode demo
+    API-->>UI: mode llm with verified citations
+  else Demo Mode or LLM error
     UI->>UI: runAnalysis() demo engine
   end
-  UI->>API: Replace facts, save pending recommendation
-  API->>DB: Persist facts and recommendation
+  UI->>IDB: Replace facts, save pending recommendation
   CW->>UI: Approve, modify or reject with a comment
-  UI->>API: PATCH /api/recommendations/:id and POST /api/audit
-  API->>DB: Persist decision and audit entry
+  UI->>IDB: Save decision and audit entry
 ```
 
 ### 7.3 Anatomy of an explainable recommendation (seeded example)
@@ -216,10 +211,10 @@ Case **CC-2026-003 — Aisha Thompson, wrongful termination (contradictory infor
 
 | | LLM mode | Demo Mode (current environment) |
 |---|---|---|
-| When it is used | `LLM_API_KEY` is set on the server | No key, or the LLM call fails |
+| When it is used | `LLM_API_KEY` is set on the server (a Worker secret on Cloudflare) | No key, or the LLM call fails |
 | Where it runs | Server → OpenAI-compatible API | In the browser; deterministic |
 | How facts are found | The model returns facts with source document, page and snippet | Rules for names, dates and dollar amounts, attributed per document and page |
-| Status | Implemented; not yet verified with a live key | Working; heuristic (CONTEXT.md KI-5 to KI-7) |
+| Status | Implemented; verified against a mock LLM, not yet with a live key | Working; heuristic (CONTEXT.md §9.4) |
 
 ---
 
@@ -249,7 +244,7 @@ All names, documents and events are invented.
 | Human override | Approve, modify or reject with comments; document requests and flags are recorded |
 | No false precision | The recommendation screen labels confidence "Confidence (uncalibrated)" and "heuristic only", and audit entries say "uncalibrated" (the dashboard queue shows the bare percentage) |
 | No fake integrations | Google Drive is labeled "Simulated"; Demo Mode banners are shown; evaluation metrics are labeled illustrative |
-| Protect confidential data | Fictional data only; server-side keys; bcrypt password hashes; httpOnly sessions; original files are not stored |
+| Protect confidential data | Fictional data only; documents read in the browser and never uploaded; original files are not stored; server-side keys; bcrypt password hashes |
 
 ---
 
@@ -275,11 +270,11 @@ The metrics requested by the brief are currently shown with **illustrative place
 ## 11. Scope, assumptions and non-goals
 
 - **In scope:** the end-to-end workflow, explainable recommendations, human review, the audit trail, CSV integration, a simulated Drive integration, the evaluation framework and fictional demo data.
-- **Assumptions:** case workers verify AI output against the original documents; an LLM key is optional; a single organization uses the workspace.
+- **Assumptions:** case workers verify AI output against the original documents; an LLM key is optional; in the demo build each browser holds its own workspace.
 - **Non-goals for this prototype:** giving legal advice or making legal decisions; court e-filing; a client-facing portal; processing real client data; production-grade compliance (see the security roadmap in CONTEXT.md §17).
 
 ---
 
 ## 12. Current status
 
-The full workflow works end-to-end with PostgreSQL persistence, real document extraction, server-side authentication and 14 passing automated tests. Analysis currently runs in Demo Mode because no LLM key is configured. The verified list of limitations and the prioritized roadmap are in [CONTEXT.md §16–17](./CONTEXT.md#16-known-issues--limitations).
+The full workflow works end to end in the **demo build**: no database (the fictional dataset ships with the app and each visitor's browser keeps its own copy), real document extraction in the browser, browser-local accounts with two roles, and 56 passing automated tests. It deploys to Cloudflare Workers. Analysis runs in Demo Mode unless an LLM key is configured. The engineering review's "PostgreSQL instead of browser storage" and server-side authentication requirements were met in an earlier version (git commit `34dd6c0`) and deliberately set aside for this zero-infrastructure demo; bringing them back is on the roadmap. Limitations and the roadmap are in [CONTEXT.md §16–17](./CONTEXT.md#16-known-limitations).

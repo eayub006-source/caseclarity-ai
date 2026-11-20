@@ -9,20 +9,21 @@ Evidence-backed, human-reviewed AI assistance for legal-aid case management.
 A Build for Campus 2026 project by **Team HACKSMITHS**
 
 ![Next.js](https://img.shields.io/badge/Next.js-16.4-000000?logo=nextdotjs&logoColor=white)
-![React](https://img.shields.io/badge/React-19.2-149ECA?logo=react&logoColor=white)
+![React](https://img.shields.io/badge/React-19.3-149ECA?logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.1-06B6D4?logo=tailwindcss&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-4169E1?logo=postgresql&logoColor=white)
-![Drizzle ORM](https://img.shields.io/badge/Drizzle_ORM-0.45-C5F74F?logo=drizzle&logoColor=black)
+![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)
 ![Status](https://img.shields.io/badge/status-hackathon_prototype-orange)
 
 </div>
 
-CaseClarity AI helps case workers at small legal-aid nonprofits turn long, inconsistent case documents into source-cited facts and **explainable recommendations** — while a human stays in charge of every decision. Each recommendation shows *why* it was made, the evidence behind it with document and page references, a confidence indicator clearly labeled as an uncalibrated heuristic, what information is missing, what is uncertain, and what to do next. Every upload, analysis and review action is written to an audit trail.
+CaseClarity AI helps case workers at small legal-aid nonprofits turn long, inconsistent case documents into source-cited facts and **explainable recommendations** — while a human stays in charge of every decision. Each recommendation shows *why* it was made, the evidence behind it with document and page references, a confidence indicator clearly labelled as an uncalibrated heuristic, what information is missing, what is uncertain, and what to do next. Every upload, analysis and review action is written to an audit trail.
 
 > **The AI assists. Humans decide.** CaseClarity AI never makes final legal decisions. All demo data is fictional, and nothing in this project is legal advice.
 
-**Demo login:** `demo@caseclarity.ai` / `demo1234` — the account is created automatically the first time you sign in.
+**Demo login:** one click on the sign-in page, or `demo@caseclarity.ai` / `demo1234` (Senior Case Worker) and `caseworker@caseclarity.ai` / `demo1234` (Case Worker).
+
+> **Demo build — no database.** The fictional dataset lives in this repository ([`src/data/demo-data.ts`](./src/data/demo-data.ts)). Each visitor's browser keeps its own copy, so every judge gets a private, persistent sandbox; *Reset demo data* restores the original. The earlier PostgreSQL version (server-side sessions and storage) is in git history at commit `34dd6c0`.
 
 ---
 
@@ -34,16 +35,16 @@ CaseClarity AI helps case workers at small legal-aid nonprofits turn long, incon
 - [Key features](#key-features)
 - [What is real and what is simulated](#what-is-real-and-what-is-simulated)
 - [Quick start](#quick-start)
+- [Deploying to Cloudflare](#deploying-to-cloudflare)
 - [Demo guide for judges](#demo-guide-for-judges)
 - [Tech stack](#tech-stack)
 - [Architecture](#architecture)
 - [Project structure](#project-structure)
-- [Installation and local setup](#installation-and-local-setup)
-- [Environment variables](#environment-variables)
-- [Running the project](#running-the-project)
+- [Configuration](#configuration)
+- [Scripts](#scripts)
 - [Tests and quality checks](#tests-and-quality-checks)
 - [API overview](#api-overview)
-- [Responsible AI](#responsible-ai)
+- [Responsible AI and privacy](#responsible-ai-and-privacy)
 - [Known limitations](#known-limitations)
 - [Documentation](#documentation)
 - [Team](#team)
@@ -64,32 +65,31 @@ Small legal-aid nonprofits help people facing eviction, benefit denials, employm
 
 ## Our solution
 
-CaseClarity AI combines case management with explainable AI assistance, a human review workflow and a complete audit trail.
-
 | Principle | How CaseClarity AI applies it |
 |---|---|
 | Explainability by default | Every recommendation shows its reasoning, evidence, missing information, uncertainties and next steps |
 | Evidence attribution | Every extracted fact keeps its source document, page number and a quoted snippet |
 | Human in the loop | Recommendations start as *pending*; only a case worker can approve, modify or reject them |
-| Honest uncertainty | Confidence is labeled as an uncalibrated heuristic; gaps and caveats are shown, not hidden |
-| Full auditability | Uploads, analyses, recommendations and review actions are stored with the actor and a timestamp |
+| Honest uncertainty | Confidence is labelled as an uncalibrated heuristic; gaps and caveats are shown, not hidden |
+| Full auditability | Uploads, analyses, recommendations and review actions are recorded with the actor and a timestamp |
 | Works with messy data | A tolerant CSV import that reports problems instead of silently dropping them |
 | Graceful degradation | Without an LLM API key, a transparent, deterministic Demo Mode keeps the whole workflow usable |
+| Privacy by design | Documents are read in the browser — files are never uploaded to a server |
 
 ### Our approach
 
-- **One full-stack TypeScript codebase.** Next.js (App Router) renders the interface, and its Route Handlers act as the backend: the REST API, document extraction and the LLM proxy all run in Node.js.
-- **PostgreSQL with Drizzle ORM** stores users, sessions, cases, documents, extracted facts, recommendations and the audit log.
-- **Real, page-aware text extraction on the server.** PDF.js (through `unpdf`) reads PDFs page by page so that facts can cite their page; `mammoth` reads Word (`.docx`) files.
-- **Two analysis modes.** When `LLM_API_KEY` is set, the server calls an OpenAI-compatible LLM that must return structured, cited JSON. Otherwise a deterministic, rule-based demo engine runs instead — and the UI and audit trail say so.
-- **Security basics.** bcrypt password hashes, server-side sessions in an httpOnly cookie, and authentication on every data endpoint.
-- **Honesty over hype.** Simulated integrations and illustrative metrics are labeled as such in the product.
+- **One TypeScript codebase on Next.js (App Router).** Every page is a React client component; three small route handlers form the server.
+- **Zero-infrastructure demo build.** No database: the dataset ships with the app and each browser keeps its own copy in IndexedDB. The rules a backend would enforce — validation, case numbering, locked reviews, an append-only audit trail — live in pure, unit-tested functions ([`src/lib/workspace.ts`](./src/lib/workspace.ts)).
+- **Real, page-aware text extraction in the browser.** PDF.js (through `unpdf`) reads PDFs page by page so that facts can cite their page; `mammoth` reads Word (`.docx`) files.
+- **Two analysis modes.** With `LLM_API_KEY` set, the server calls an OpenAI-compatible LLM that must return structured, cited JSON, and every citation is checked against the documents. Otherwise a deterministic, rule-based demo engine runs — and the UI and audit trail say so.
+- **Runs on Cloudflare Workers** through [vinext](https://github.com/cloudflare/vinext), Cloudflare's Vite-based implementation of Next.js.
+- **Honesty over hype.** Simulated integrations, illustrative metrics and the demo build's limits are labelled as such.
 
 ## How it works
 
 ```mermaid
 flowchart LR
-  U["Upload documents"] --> X["Extract text<br/>page by page"]
+  U["Upload documents"] --> X["Extract text<br/>page by page<br/>(in the browser)"]
   X --> A["Analyze<br/>LLM or Demo Mode"]
   A --> R["Explainable<br/>recommendation"]
   R --> H{"Human review"}
@@ -98,8 +98,8 @@ flowchart LR
 ```
 
 1. **Upload** — add PDF, DOCX, TXT, CSV or MD files (up to 10 MB each) to a case by drag and drop or with the file picker.
-2. **Extract** — the server extracts the text (PDFs page by page) and stores it with the document.
-3. **Analyze** — *Run AI Analysis* sends the case's text to the backend. The LLM (if configured) or the demo engine extracts facts with document, page and snippet, checks the case type's required-document checklist, and looks for contradictions.
+2. **Extract** — the browser extracts the text (PDFs page by page) and stores it with the document. The file itself is not kept or uploaded.
+3. **Analyze** — *Run AI Analysis* extracts facts with document, page and snippet, checks the case type's required-document checklist, and looks for contradictions — with the LLM (if configured) or the demo engine.
 4. **Recommend** — a new *pending* recommendation is saved with its reasoning, evidence, confidence, missing information, uncertainties and next steps.
 5. **Review** — a case worker approves, modifies or rejects it, adds a comment, requests more documents or flags the case for investigation.
 6. **Audit** — every step is recorded with the actor, a category and a timestamp.
@@ -107,324 +107,271 @@ flowchart LR
 ## Key features
 
 ### Case workspace
-- **Dashboard** — total cases, cases awaiting review, completed cases and cases with missing documents; a cases-by-status chart; a *Needs Your Review* queue; recent cases and recent activity; quick actions to create a case or upload documents.
-- **Cases** — create cases, browse them as cards, search by title, client or case number, filter by status and case type, and export to CSV.
-- **Case detail** with six tabs:
-  - *Overview* — summary, counts, latest recommendation and the required-documents checklist
-  - *Documents* — upload files, view and download extracted text
-  - *Analysis* — table of extracted facts with source document, page, confidence and snippet
-  - *Recommendation* — the full explanation plus the review panel
-  - *Human Review* — history of review decisions
-  - *Audit* — the case's timeline
+- **Dashboard** — total cases, cases awaiting review, completed cases and cases with missing documents; a cases-by-status chart; a *Needs Your Review* queue; recent cases and activity; quick actions.
+- **Cases** — create cases, browse them as cards, search by title, client or case number, filter by status and type, and export to CSV.
+- **Case detail** with six tabs: *Overview* (summary, latest recommendation, required-documents checklist), *Documents* (upload, view and download extracted text), *Analysis* (facts with source document, page, confidence and snippet), *Recommendation* (full explanation + review panel), *Human Review* (decision history), *Audit* (timeline).
 
 ### Documents and analysis
-- **Real text extraction** for PDF (per page), DOCX, TXT, CSV and MD, with a warning when a file contains no extractable text (for example, a scanned PDF).
-- **Facts with provenance** — the demo engine extracts names, dates and dollar amounts, each tied to the document, page and text it came from.
-- **Missing-document detection** against a required-document checklist for each case type.
-- **Contradiction checks** (demo engine heuristics) — amounts that differ by more than $2,000 across documents, and a keyword rule for a "position eliminated but later refilled" conflict.
-- **LLM analysis endpoint** — requests structured JSON with cited facts and a recommendation, using an API key that never leaves the server.
+- **Real text extraction** for PDF (per page), DOCX, TXT, CSV and MD, with a warning when a file contains no extractable text (for example a scanned PDF).
+- **Facts with provenance** — names, labelled dates and labelled amounts (rent, income, arrears…), each tied to the document, page and text it came from.
+- **Missing-document detection** against a required-document checklist per case type (it recognises synonyms, e.g. `Pay_Stubs.pdf` counts as *Proof of Income*).
+- **Contradiction checks** between comparable values — differing annual incomes, differing rents, and a "position eliminated but later refilled" conflict.
+- **Live AI** (optional) — structured, cited JSON from an LLM; citations that cannot be found in the documents are marked **Unverified**.
 
 ### Explainable recommendations
-Every recommendation displays:
-1. the recommendation itself;
-2. why the AI generated it;
-3. the supporting evidence;
-4. the source document and page for each piece of evidence, with the quoted text;
-5. a confidence indicator labeled as uncalibrated ("heuristic only");
-6. missing information;
-7. uncertainties and possible exceptions;
-8. numbered next steps.
+Every recommendation displays: the recommendation; why the AI generated it; the supporting evidence; the source document and page for each piece of evidence with the quoted text; a confidence indicator labelled as uncalibrated ("heuristic only"); missing information; uncertainties and possible exceptions; numbered next steps.
 
 ### Human review and audit trail
-- **Review actions** — approve (which marks the case completed), modify (replacement text required), reject, comment, request additional documents, or flag a case for investigation.
-- **Audit trail** — every action is stored in PostgreSQL and viewable per case and across all cases, with search, category filters and CSV export.
+- **Review actions** — approve (marks the case completed), modify (replacement text required), reject, comment, request documents, flag for investigation. Approved and rejected recommendations are locked.
+- **Audit trail** — every action is recorded per case and across all cases, with search, category filters and CSV export.
 
 ### Integrations
-- **CSV case import** — standards-compliant parsing (RFC 4180, via PapaParse) with flexible column names, warnings for missing columns and incomplete rows, mixed date-format detection, duplicate detection and an import report.
+- **CSV case import** — RFC 4180 parsing (PapaParse) with flexible column names, warnings for missing columns and incomplete rows, mixed date-format detection, duplicate detection and an import report.
 - **CSV export** of cases and of the audit trail.
-- **Google Drive import — simulated.** Clearly labeled as simulated in the UI; there is no real Drive connection.
+- **Google Drive import — simulated.** Clearly labelled; there is no real Drive connection.
 
 ### Platform
-- **Accounts** — email and password sign-up and sign-in, plus a one-click demo account for judges.
+- **Accounts and roles** — one-click demo accounts for a *Senior Case Worker* (can delete cases and reset demo data) and a *Case Worker*, plus sign-up. Accounts are stored in the browser with bcrypt-hashed passwords.
 - **Interface** — responsive navy-and-blue design for desktop, tablet and mobile.
-- **Evaluation page** — compares manual and AI-assisted review using **illustrative** (not measured) numbers, with a documented method for replacing them with real results.
+- **Evaluation page** — compares manual and AI-assisted review using **illustrative** (not measured) numbers, with a method for replacing them with real results.
 
 ## What is real and what is simulated
 
 | Capability | Status |
 |---|---|
-| PostgreSQL persistence, authenticated API, bcrypt and server-side sessions | ✅ Real |
-| PDF, DOCX, TXT, CSV and MD text extraction | ✅ Real |
-| Explainable recommendations and the human review workflow | ✅ Real |
-| Audit trail stored in the database | ✅ Real |
-| CSV import and export | ✅ Real |
+| Case management, explainable recommendations, human review workflow | ✅ Real |
+| PDF, DOCX, TXT, CSV and MD text extraction (in the browser) | ✅ Real |
+| Audit trail, CSV import and export | ✅ Real |
+| Data persistence | 🟡 Real, but **per browser** (IndexedDB) — no shared server-side database in this build |
+| Accounts and roles | 🟡 Real validation and bcrypt hashing, but stored in the browser — they identify users, they do not protect data |
 | AI analysis in Demo Mode | 🟡 Real, but rule-based heuristics — no LLM involved |
-| AI analysis with an LLM | 🟡 Implemented; not yet verified with a live API key |
+| AI analysis with an LLM | 🟡 Implemented and verified against a mock LLM; not yet run with a live provider key |
 | Confidence scores | 🟡 Uncalibrated heuristics — not probabilities |
-| Google Drive import | 🧪 Simulated (labeled in the UI) |
-| Evaluation metrics | 🧪 Illustrative placeholders (labeled in the UI) |
+| Google Drive import | 🧪 Simulated (labelled in the UI) |
+| Evaluation metrics | 🧪 Illustrative placeholders (labelled in the UI) |
 | Demo cases, documents and history | 🧪 Fictional |
-
-With the default configuration (no `LLM_API_KEY`), analysis runs in **Demo Mode**.
 
 ## Quick start
 
-You need **Node.js 22**, **npm** and a **PostgreSQL 15** database (see [Installation and local setup](#installation-and-local-setup) for details).
+You need **Node.js 22 or newer** and npm. No database is required.
 
 ```bash
 git clone https://github.com/eayub006-source/caseclarity-ai.git
 cd caseclarity-ai
 npm install
-cp .env.example .env      # defaults point to postgres:postgres@127.0.0.1:5432/app_db
-npm run db:push           # creates/updates the database tables
 npm run dev               # http://localhost:3000
 ```
 
-Open <http://localhost:3000/login> and sign in with `demo@caseclarity.ai` / `demo1234`. On the first sign-in, the demo account and the fictional dataset (6 cases, 19 documents, 20 facts, 6 recommendations, 14 audit events) are created automatically. The demo account exists only when `DEMO_ACCOUNT=true` or in development — see [Environment variables](#environment-variables).
+Open <http://localhost:3000/login> and click a demo account. The fictional dataset (6 cases, 19 documents, 20 facts, 6 recommendations, 14 audit events) is loaded into your browser on first visit.
+
+To try Live AI locally, copy `.env.example` to `.env` and set `LLM_API_KEY` (see [Configuration](#configuration)).
+
+## Deploying to Cloudflare
+
+The app deploys to **Cloudflare Workers** with vinext. The Worker serves the pages and three small API routes; there are no databases or other bindings to create.
+
+```bash
+npm install
+npx cf auth login          # once: sign in to your Cloudflare account
+npm run deploy             # builds and deploys the Worker "caseclarity-ai"
+```
+
+The command prints a `https://caseclarity-ai.<your-subdomain>.workers.dev` URL. In CI, set `CLOUDFLARE_API_TOKEN` (an API token with the *Edit Cloudflare Workers* template) and `CLOUDFLARE_ACCOUNT_ID` instead of signing in.
+
+Try the production build locally first, in Cloudflare's own runtime (workerd):
+
+```bash
+npm run build:cloudflare
+npm run preview:cloudflare   # http://localhost:4173
+```
+
+**Optional — Live AI on Cloudflare:**
+
+1. In `cloudflare.config.ts`, uncomment `LLM_API_KEY: bindings.secret()` (and `LLM_BASE_URL` / `LLM_MODEL` if you are not using OpenAI's defaults). Declared secrets are required at deploy time, which is why they are commented out for Demo Mode.
+2. Set the secret values in the Cloudflare dashboard (Workers & Pages → `caseclarity-ai` → Settings → Variables and Secrets). For the local preview, copy `.dev.vars.example` to `.dev.vars` and fill it in.
+3. Redeploy. The UI switches from *Demo Mode* to *Live AI*.
+
+> **Protect a deployment that has an LLM key.** Anyone who can open the site can trigger LLM calls. Put it behind [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/) or add a rate-limiting rule.
 
 ## Demo guide for judges
 
-1. **Sign in** — the login form is pre-filled with the demo account, or click *Use demo account for judges*.
+1. **Sign in** — click *Alex Rivera — Senior Case Worker* on the sign-in page.
 2. **Dashboard** — review the case counts, the status chart and the review queue.
 3. **Complete documents** — open **CC-2026-001 (Maria Gonzalez, eviction)**. The *Recommendation* tab shows an evidence-backed recommendation citing four documents.
-4. **Missing documents** — open **CC-2026-002 (James Carter, SNAP benefits appeal)**. The recommendation advises *not* to file yet and lists the missing documents and the appeal deadline.
+4. **Missing documents** — open **CC-2026-002 (James Carter, SNAP appeal)**. The recommendation advises *not* to file yet and lists the missing documents and the appeal deadline.
 5. **Contradictory information** — open **CC-2026-003 (Aisha Thompson, employment)**. The recommendation highlights a salary mismatch ($62,000 vs $69,600) and a termination-timeline conflict, with moderate confidence.
 6. **Human review** — approve, modify or reject a recommendation with a comment, then open **Audit Trail** to see the decision recorded.
-7. **Real extraction** — upload a PDF or DOCX on any case's *Documents* tab, then click **Run AI Analysis**.
+7. **Real extraction** — upload a PDF or DOCX on any case's *Documents* tab (it is read in your browser), then click **Run AI Analysis**.
 8. **Integrations** — download the sample CSV on the *Integrations* page and import it to see duplicate and date-format handling.
+9. **Roles** — sign out and click *Jordan Lee — Case Worker*: delete and reset are not available.
 
-> **Tip:** the six demo cases ship with hand-written example recommendations. Running the analysis on a seeded case replaces its example facts with the demo engine's output, which can differ. Use **Reset demo data** in the sidebar to restore the originals.
+> **Tip:** the six demo cases ship with hand-written sample recommendations. Running the analysis on a seeded case replaces its sample facts with the demo engine's output, which can differ. Use **Reset demo data** in the sidebar (senior case workers) to restore the originals. Your changes are saved in your browser only.
 
 ## Tech stack
 
 | Layer | Technology |
 |---|---|
-| Framework | Next.js 16.4 (App Router and Route Handlers) |
-| UI | React 19.2, Tailwind CSS 4.1, lucide-react icons |
+| Framework | Next.js 16.4 (App Router) — and vinext 1.4 + Vite 8 for the Cloudflare build |
+| UI | React 19.3, Tailwind CSS 4.1, lucide-react icons |
 | Language | TypeScript 5.9 (strict mode) |
-| Database | PostgreSQL 15, Drizzle ORM 0.45, `pg` driver, `drizzle-kit` for schema push |
-| Document parsing | `unpdf` (PDF.js) for PDF, `mammoth` for DOCX |
+| Data | Fictional dataset in the repo; IndexedDB in the browser for each visitor's copy |
+| Document parsing | `unpdf` (PDF.js) for PDF, `mammoth` for DOCX — both in the browser |
 | CSV | PapaParse (RFC 4180) |
-| Authentication | `bcryptjs` password hashing, server-side sessions in an httpOnly cookie |
+| Accounts | Browser-local, `bcryptjs` password hashing |
 | AI | Optional OpenAI-compatible Chat Completions API (default model `gpt-4o-mini`), or the built-in demo engine |
-| Testing and linting | Vitest, ESLint with `eslint-config-next` |
-| Runtime | Node.js 22 |
+| Hosting | Cloudflare Workers (`nodejs_compat`) |
+| Testing and linting | Vitest, ESLint with `eslint-config-next`, GitHub Actions CI |
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  B["Browser<br/>Next.js client pages"] -->|"fetch + session cookie"| API["Route Handlers<br/>src/app/api"]
-  API --> DB[("PostgreSQL<br/>Drizzle ORM")]
-  API -->|"only if LLM_API_KEY is set"| LLM["OpenAI-compatible<br/>LLM API"]
-  B -.->|"Demo Mode fallback"| ENG["Demo engine<br/>src/lib/core.ts"]
+  subgraph B["Browser"]
+    P["Pages<br/>(client components)"] --> S["Store<br/>src/lib/store.tsx"]
+    S --> W["Workspace rules<br/>src/lib/workspace.ts"]
+    S --> I[("IndexedDB")]
+    S --> X["Text extraction<br/>PDF.js · mammoth"]
+    P --> E["Demo engine<br/>src/lib/core.ts"]
+    D["src/data/demo-data.ts"] -->|"first visit / reset"| S
+  end
+  subgraph CF["Cloudflare Worker"]
+    C["GET /api/config"]
+    A["POST /api/analyze"]
+    H["GET /api/health"]
+  end
+  S --> C
+  S -->|"Live AI only"| A
+  A -->|"only if LLM_API_KEY is set"| L["OpenAI-compatible LLM"]
 ```
 
-- **Client:** all pages are React client components. A single client store (`src/lib/store.tsx`) handles every data read and write through the API.
-- **Backend:** the Route Handlers in `src/app/api/` are the backend, and every data route requires a valid session.
-- **Analysis:** `/api/extract` parses uploads on the server. `/api/analyze` calls the LLM when a key is configured; otherwise the browser runs the demo engine (`runAnalysis()` in `src/lib/core.ts`).
-- **Data:** everything lives in PostgreSQL; the schema (7 tables) is defined in `src/db/schema.ts`.
+- **Client:** every page is a React client component. The store (`src/lib/store.tsx`) is the single gateway for data: it applies the workspace rules and saves the result in IndexedDB.
+- **Server:** three stateless route handlers. In Demo Mode the browser only calls `GET /api/config`.
+- **Analysis:** `/api/analyze` calls the LLM when a key is configured and verifies its citations; otherwise the browser runs the demo engine.
+- **Data:** the dataset is [`src/data/demo-data.ts`](./src/data/demo-data.ts); the domain types are in `src/lib/core.ts`.
 
 ## Project structure
 
 ```
 caseclarity-ai/
 ├── src/
+│   ├── data/demo-data.ts         # the fictional dataset and demo accounts
 │   ├── app/
 │   │   ├── page.tsx              # landing page
-│   │   ├── login/                # sign-in page
-│   │   ├── signup/               # sign-up page
-│   │   ├── (app)/                # signed-in workspace
-│   │   │   ├── layout.tsx        # sidebar, top bar, sign-in gate, notifications
-│   │   │   ├── dashboard/        # stats, status chart, review queue
-│   │   │   ├── cases/            # case list, new case, case detail ([id])
-│   │   │   ├── upload/           # upload documents to a case
-│   │   │   ├── integrations/     # CSV import/export, Google Drive (simulated)
-│   │   │   ├── evaluation/       # illustrative performance metrics
-│   │   │   └── audit/            # global audit trail
-│   │   └── api/                  # backend Route Handlers: auth, cases, documents, extract,
-│   │                             #   extractions, recommendations, analyze, audit, seed, health
+│   │   ├── login/, signup/       # sign-in (one-click demo accounts) and sign-up
+│   │   ├── (app)/                # signed-in workspace: dashboard, cases, cases/[id], upload,
+│   │   │                         #   integrations, evaluation, audit (+ layout with sidebar)
+│   │   └── api/                  # analyze (Live AI), config, health
 │   ├── components/ui.tsx         # shared UI components
-│   ├── db/                       # Drizzle client (index.ts) and schema (schema.ts)
 │   └── lib/
-│       ├── core.ts               # domain types, demo data, demo analysis engine
-│       ├── store.tsx             # client data store that calls the API
-│       ├── extract.ts            # PDF, DOCX and text extraction (server)
-│       ├── csv.ts                # CSV parsing, mapping and duplicate detection
-│       ├── auth-server.ts        # sessions and route protection (server)
-│       └── password.ts           # bcrypt helpers (server)
+│       ├── store.tsx             # client data store (IndexedDB-backed)
+│       ├── workspace.ts          # data rules as pure functions
+│       ├── browser-db.ts         # IndexedDB key-value helper
+│       ├── accounts.ts           # demo and local accounts
+│       ├── core.ts               # domain types, checklist, demo analysis engine
+│       ├── extract.ts            # PDF, DOCX and text extraction (browser)
+│       ├── llm.ts                # LLM prompt + citation verification
+│       └── csv.ts                # CSV parsing, mapping and duplicate detection
 ├── tests/                        # Vitest unit tests
-├── .env.example                  # environment variable template
-├── drizzle.config.ts             # drizzle-kit configuration (reads DATABASE_URL)
-├── AGENTS.md                     # developer guide
-├── CONTEXT.md                    # verified project context
-├── PROBLEM_STATEMENT.md          # problem and solution
+├── cloudflare.config.ts          # Cloudflare Worker configuration
+├── vite.config.ts                # vinext build for Cloudflare
+├── .env.example                  # LLM settings for `npm run dev`
+├── .dev.vars.example             # LLM settings for the local Worker preview
+├── AGENTS.md · CONTEXT.md · PROBLEM_STATEMENT.md · PROJECT_STATUS.md
 └── package.json
 ```
 
-## Installation and local setup
+## Configuration
 
-### 1. Prerequisites
-- **Node.js 22** (tested with 22.23.4) and npm
-- **PostgreSQL 15** (tested with 15.19)
+All settings are optional. Without them the app runs in Demo Mode.
 
-### 2. Install dependencies
-```bash
-npm install
-```
+| Variable | Default | Purpose |
+|---|---|---|
+| `LLM_API_KEY` | *(empty)* | Enables Live AI analysis |
+| `LLM_BASE_URL` | `https://api.openai.com/v1` | Base URL of an OpenAI-compatible API |
+| `LLM_MODEL` | `gpt-4o-mini` | Model name sent to the API |
 
-### 3. Create a database
-The default configuration expects a database named `app_db` on `127.0.0.1:5432`, with the user and password `postgres`:
+- **`npm run dev`** reads them from `.env` (copy `.env.example`).
+- **Cloudflare** reads them as Worker secrets, and the local Worker preview reads `.dev.vars` — see [Deploying to Cloudflare](#deploying-to-cloudflare).
+- The key is read only on the server and never sent to the browser. `.env` and `.dev.vars` are gitignored — never commit them.
+- The UI shows *Live AI* or *Demo Mode* according to whether a key is configured (`GET /api/config`).
 
-```bash
-psql -U postgres -h 127.0.0.1 -c "CREATE DATABASE app_db;"
-```
-
-Or run PostgreSQL with Docker:
-
-```bash
-docker run --name caseclarity-db -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=app_db -p 5432:5432 -d postgres:15
-```
-
-### 4. Configure environment variables
-```bash
-cp .env.example .env
-```
-Then adjust the values if needed — see [Environment variables](#environment-variables).
-
-### 5. Create the tables
-```bash
-npm run db:push
-```
-
-> **Note:** `drizzle.config.ts` reads `DATABASE_URL` from `.env`, the same as the app. Run `npm run db:push` again after pulling schema changes. **Upgrading an existing database?** Run it, then use *Reset demo data* so the seeded cases get their completeness values.
-
-### 6. Start the app
-```bash
-npm run dev
-```
-Open <http://localhost:3000> and sign in with the demo account. The demo data is seeded automatically on the first sign-in.
-
-## Environment variables
-
-All variables are listed in [`.env.example`](./.env.example):
-
-```env
-DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/app_db
-DEMO_ACCOUNT=true
-LLM_API_KEY=
-LLM_BASE_URL=https://api.openai.com/v1
-LLM_MODEL=gpt-4o-mini
-```
-
-| Variable | Required | Default | Purpose |
-|---|---|---|---|
-| `DATABASE_URL` | Yes | — | PostgreSQL connection string used by the app and by `npm run db:push` |
-| `TRUST_PROXY` | No | off | **Set `true` on Vercel / behind nginx.** An attacker's IP is then blocked after 10 failed logins, before the always-on per-account cap (30 / 15 min) is reached. |
-| `TRUSTED_IP_HEADER` | No | `x-forwarded-for` | With `TRUST_PROXY=true`: the header your host overwrites with the client IP. Vercel: `x-vercel-forwarded-for`; Cloudflare: `cf-connecting-ip`; nginx: `x-real-ip` or `x-forwarded-for` (right-most hop). |
-| `DEMO_ACCOUNT` | No | on in development, **off in production** | `true` creates the demo account and fictional seed data. **Set `DEMO_ACCOUNT=true` on the judges' deployment.** |
-| `LLM_API_KEY` | No | *(empty)* | Enables LLM analysis; leave it empty to use Demo Mode |
-| `LLM_BASE_URL` | No | `https://api.openai.com/v1` | Base URL of an OpenAI-compatible API |
-| `LLM_MODEL` | No | `gpt-4o-mini` | Model name sent to the API |
-
-- The LLM key is read only on the server and is never sent to the browser.
-- `.env` is listed in `.gitignore` — never commit it.
-- The UI shows "Live AI" or "Demo Mode" according to whether a key is configured (`GET /api/config`).
-
-## Running the project
+## Scripts
 
 | Command | What it does |
 |---|---|
-| `npm run dev` | Development server with hot reload at <http://localhost:3000> |
-| `npm run build` | Production build |
-| `npm run start` | Starts the production server (run `npm run build` first) |
-| `npm run lint` | Runs ESLint |
-| `npm run typecheck` | Runs the TypeScript compiler without emitting files |
-| `npm test` | Runs the unit tests |
-| `npm run db:push` | Creates or updates the database tables from `src/db/schema.ts` |
-
-- **Health check:** `curl http://localhost:3000/api/health` returns `{"ok":true}` when the app can reach the database.
-- **Demo data:** seeded automatically on the first sign-in when the database has no cases. *Reset demo data* in the sidebar (senior case workers and admins only) restores it; this deletes all case data but keeps user accounts.
+| `npm run dev` | Next.js development server at <http://localhost:3000> |
+| `npm run build` / `npm start` | Next.js production build / server |
+| `npm run dev:cloudflare` | vinext development server (port 3001) with the Workers runtime |
+| `npm run build:cloudflare` | Build the Cloudflare Worker |
+| `npm run preview:cloudflare` | Run the built Worker locally (workerd), port 4173 |
+| `npm run deploy` | Build and deploy to Cloudflare Workers |
+| `npm test` | Unit tests |
+| `npm run typecheck` | Generate route types and run the TypeScript compiler |
+| `npm run lint` | ESLint |
 
 ## Tests and quality checks
-
-```bash
-npm test
-```
-
-The suite contains **46 unit tests** in `tests/` and does not need a database:
-
-| File | What it covers |
-|---|---|
-| `tests/extraction.test.ts` | Real PDF, DOCX and TXT extraction; facts attributed to the correct document and page; every evidence item has a document, page and snippet |
-| `tests/analysis.test.ts` | Required-document checklist (synonyms, completeness); demo-engine results on every seeded case; labelled amounts; contradiction rules |
-| `tests/llm.test.ts` | LLM output validation: citations checked against the documents, page correction, unknown documents marked unverified, prompt page markers |
-| `tests/auth.test.ts` | bcrypt hashing: no plaintext storage, correct and incorrect passwords, salted hashes |
-| `tests/csv.test.ts` | Quoted fields containing commas, mixed date formats, missing columns, duplicate detection |
-| `tests/misc.test.ts` | Roles, login rate limiter, estimated pages for DOCX/TXT, RFC 4180 export, CSV date/priority/status import |
-
-Full validation sequence:
 
 ```bash
 npm test
 npm run typecheck
 npm run lint
 npm run build
+npm run build:cloudflare
 ```
 
-GitHub Actions (`.github/workflows/ci.yml`) runs this sequence on every push and pull request.
+The suite contains **56 unit tests** in `tests/` and needs no network or database:
 
-API routes and UI flows are not yet covered by automated tests in the repo; they were checked with a scripted browser walkthrough (desktop and mobile) on 20 November 2026.
+| File | What it covers |
+|---|---|
+| `tests/workspace.test.ts` | Demo dataset integrity; case numbering and validation; delete keeps audit history; CSV import duplicates; new recommendations always pending; locked reviews; modifications keep the AI's evidence |
+| `tests/accounts.test.ts` | Demo sign-in, wrong passwords, sign-up stores only a bcrypt hash, duplicate and invalid sign-ups |
+| `tests/extraction.test.ts` | Real PDF and DOCX extraction through the browser code path; facts attributed to the correct document and page |
+| `tests/analysis.test.ts` | Required-document checklist; demo-engine results on every seeded case; labelled amounts; contradiction rules |
+| `tests/llm.test.ts` | LLM output validation: citations checked against the documents, page correction, unknown documents marked unverified |
+| `tests/auth.test.ts`, `tests/csv.test.ts`, `tests/misc.test.ts` | bcrypt hashing; CSV parsing and export; roles; estimated pages |
+
+GitHub Actions (`.github/workflows/ci.yml`) runs the full sequence — including the Cloudflare build — on every push and pull request. UI flows were verified with a scripted browser walkthrough (desktop and mobile) on both `next dev` and the local Cloudflare Worker preview on 21 November 2026; those scripts are not yet part of the repository.
 
 ## API overview
 
-All routes return JSON. Apart from the health check, the auth endpoint and first-run seeding, every route requires a valid session cookie and returns `401` otherwise.
+All routes are stateless and return JSON. Nothing is stored on the server.
 
-| Endpoint | Methods | Purpose |
+| Endpoint | Method | Purpose |
 |---|---|---|
-| `/api/health` | GET | Database health check |
-| `/api/auth` | GET, POST | Current session; login, sign-up and logout |
-| `/api/seed` | POST | Seeds demo data into an empty database; `?reset=1` resets it (signed-in users only) |
-| `/api/cases` | GET, POST | Lists and creates cases; bulk CSV import with duplicate detection |
-| `/api/cases/[id]` | PATCH, DELETE | Updates or deletes a case |
-| `/api/documents` | GET, POST | Lists and saves documents |
-| `/api/extract` | POST | Extracts text from an uploaded file (multipart, 10 MB maximum) |
-| `/api/extractions` | GET, POST, DELETE | Extracted facts (replaced when a case is re-analyzed) |
-| `/api/recommendations` | GET, POST | Lists and creates recommendations |
-| `/api/recommendations/[id]` | PATCH | Records a review decision |
-| `/api/analyze` | POST | Runs LLM analysis, or returns a Demo Mode signal when no key is set |
-| `/api/audit` | GET, POST | Reads and appends audit entries |
+| `/api/health` | GET | Liveness check — `{"ok":true}` |
+| `/api/config` | GET | `{aiMode: "demo" \| "llm", model}` so the UI can label itself honestly |
+| `/api/analyze` | POST | Live AI analysis of a case's document text, with citation verification; answers `mode: "demo"` when no key is set or the LLM fails. Cross-site requests are blocked |
 
-The full reference, including request and response formats, is in [CONTEXT.md](./CONTEXT.md#7-api-reference).
+Details are in [CONTEXT.md](./CONTEXT.md#7-api-reference).
 
-## Responsible AI
+## Responsible AI and privacy
 
 - **No final legal decisions** — recommendations are advisory and wait for a human decision.
-- **Facts are separated from interpretation** — facts are shown with their source document, page and quoted text; recommendations are labeled as AI-generated and come with reasoning and uncertainties.
-- **Evidence and uncertainty are always visible** — missing information and uncertainties are part of every recommendation, and the interface warns when a recommendation has no cited evidence.
-- **Honest confidence** — confidence values are labeled as uncalibrated heuristics, not probabilities.
-- **No fake integrations** — simulated features and illustrative metrics are labeled in the interface.
-- **Privacy** — only fictional data is used; secrets stay on the server; passwords are hashed; only extracted text is stored, and original files are not kept.
+- **Facts are separated from interpretation** — facts are shown with their source document, page and quoted text; recommendations are labelled as AI-generated and come with reasoning and uncertainties.
+- **Evidence and uncertainty are always visible** — missing information and uncertainties are part of every recommendation; unverifiable LLM citations are flagged.
+- **Honest confidence** — confidence values are labelled as uncalibrated heuristics, not probabilities.
+- **No fake integrations** — simulated features and illustrative metrics are labelled in the interface.
+- **Privacy** — fictional data only; documents are read in the browser and never uploaded; case data stays in the visitor's browser; the LLM key stays on the server; passwords of new accounts are bcrypt-hashed. In Live AI mode a case's document text is sent to the configured LLM provider for the analysis.
 
 ## Known limitations
 
-This is a hackathon prototype. The full list is in [CONTEXT.md](./CONTEXT.md#16-known-issues--limitations).
+This is a hackathon prototype. The full list is in [CONTEXT.md](./CONTEXT.md#16-known-limitations).
 
-- **Simple demo engine** — rule-based: it finds the client name, dates and labelled amounts (rent, income, arrears…), and only compares like with like. It is not a substitute for the LLM.
-- **LLM mode checked only against a mock** — citations are verified against the documents, but it has not been run with a live key.
-- **No OCR** — scanned PDFs return no text. Only PDFs have real page numbers; DOCX/TXT/CSV pages are estimated.
+- **Per-browser data** — no shared workspace across people or devices; clearing site data starts again from the demo data.
+- **Accounts are not a security boundary** — they live in the browser and identify users for the audit trail.
+- **Live AI** — checked against a mock LLM only; unauthenticated on a public deployment (protect it).
+- **No OCR** — scanned PDFs return no text. Only PDFs have real page numbers; DOCX/TXT/CSV pages are estimated. Original files are not kept.
+- **Simple demo engine** — rule-based; it is not a substitute for the LLM.
 - **Google Drive is simulated.**
-- **Single organization** — roles exist (case worker, senior case worker, admin), but every signed-in user sees all cases of the deployment.
-- **In-memory rate limiting** — the login limiter is per server instance.
 
 ## Documentation
 
 | Document | What it covers |
 |---|---|
 | [PROJECT_STATUS.md](./PROJECT_STATUS.md) | Plain-language summary of what is done and what is remaining |
-| [PROBLEM_STATEMENT.md](./PROBLEM_STATEMENT.md) | The original brief, the problem, our solution and approach, and how the system works |
-| [CONTEXT.md](./CONTEXT.md) | Verified project context: feature status, architecture, data model, API reference, known issues and roadmap |
-| [AGENTS.md](./AGENTS.md) | Guide for developers and AI coding assistants: setup, conventions, rules for safe changes and validation |
+| [PROBLEM_STATEMENT.md](./PROBLEM_STATEMENT.md) | The original brief, the problem, our solution and approach |
+| [CONTEXT.md](./CONTEXT.md) | Verified project context: architecture, data model, API, security, limitations, roadmap |
+| [AGENTS.md](./AGENTS.md) | Guide for developers and AI coding assistants: setup, conventions, rules for safe changes |
 
 ## Team
 

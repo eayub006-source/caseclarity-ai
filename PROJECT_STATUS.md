@@ -1,7 +1,7 @@
 # Project Status — CaseClarity AI
 
 > A plain-language summary of **what is done** and **what is remaining**.
-> Last updated: **20 November 2026** · Branch: `main`
+> Last updated: **21 November 2026** · Branch: `main`
 >
 > For technical details see [CONTEXT.md](./CONTEXT.md) (full inventory) and [AGENTS.md](./AGENTS.md) (how to work on the code).
 
@@ -19,176 +19,134 @@ CaseClarity AI helps **legal-aid workers** handle client cases faster.
 
 ---
 
-## 2. Quick summary
+## 2. How this version works (important)
+
+This is the **demo build**, made to be easy to host on **Cloudflare**:
+
+- **No database.** The fictional demo data is a file inside the project: `src/data/demo-data.ts`.
+- **Each visitor gets their own copy**, saved in their own browser. Changes (new cases, uploads, reviews) stay after a reload, and judges never see each other's changes.
+- **Reset demo data** (sidebar, senior case workers) puts everything back to the original.
+- **Documents never leave the computer** — the text is read inside the browser.
+- The earlier version with a **PostgreSQL** database and server logins is saved in git history (commit `34dd6c0`) if a shared workspace is needed later.
+
+**Logins** (one click on the sign-in page, password `demo1234`):
+
+| Account | Role | Can do |
+|---|---|---|
+| `demo@caseclarity.ai` — Alex Rivera | Senior Case Worker | Everything, including delete cases and reset demo data |
+| `caseworker@caseclarity.ai` — Jordan Lee | Case Worker | Everything except delete cases and reset demo data |
+
+New accounts can be created on the sign-up page; they are saved in that browser only.
+
+---
+
+## 3. Quick summary
 
 | Area | Status |
 |---|---|
-| Login, accounts, roles | ✅ Done |
+| Sign in, sign up, roles, one-click demo accounts | ✅ Done (accounts live in the browser) |
 | Cases (create, list, search, filter, delete) | ✅ Done |
-| File upload + text extraction (PDF, DOCX, TXT, CSV, MD) | ✅ Done |
+| File upload + text extraction (PDF, DOCX, TXT, CSV, MD) | ✅ Done — in the browser |
 | Required-documents checklist + completeness % | ✅ Done |
 | AI analysis — demo engine (no API key) | ✅ Done |
-| AI analysis — real LLM (with API key) | 🟡 Built, tested only with a fake AI server |
+| AI analysis — real LLM (with API key) | 🟡 Built and tested with a fake AI server, also on Cloudflare |
 | Explainable recommendation (evidence, conflicts, missing info, next steps) | ✅ Done |
 | Human review (approve / modify / reject, locked after decision) | ✅ Done |
 | Audit trail (search, export) | ✅ Done |
 | CSV import / export | ✅ Done |
 | Google Drive import | 🟡 Simulated only |
-| Security basics | ✅ Done (see §3.8) |
-| Automated tests | ✅ 46 unit tests, run by GitHub Actions CI on every push · 40 API checks and a full browser walkthrough (run manually) |
-| Browser walkthrough (desktop + mobile) | ✅ Done 20 Nov 2026 — every page and flow works |
+| Saving data | 🟡 Per browser — no shared workspace |
+| Cloudflare deployment | ✅ Ready — `npm run deploy` (needs your Cloudflare login) |
+| Automated tests | ✅ 56 unit tests, run on every push (GitHub Actions) |
+| Browser walkthrough (desktop + phone) | ✅ Done 21 Nov 2026 on the normal and the Cloudflare build |
 | OCR for scanned PDFs | ❌ Not started |
-| Organizations / teams | ❌ Not started |
-| Password reset | ❌ Not started |
+| Shared workspace / organizations / password reset | ❌ Not in this build |
 | Real evaluation results | ❌ Not started |
 
 ---
 
-## 3. What is DONE ✅
+## 4. What is DONE ✅
 
-### 3.1 Accounts and login
-- Sign up, sign in, sign out.
-- Passwords are stored safely (bcrypt hash — never as plain text).
-- Login stays active for 7 days using a secure cookie.
-- Password must be at least **8 characters** (checked on the server).
-- Wrong passwords are limited: **30 per account** in 15 minutes from anywhere, and with `TRUST_PROXY=true` (recommended on Vercel) **10 per account per IP**, so an attacker's own IP is blocked long before the real user is. Correct logins never count, and simultaneous guesses cannot slip past the limit.
-- If your login expires, the app sends you back to the sign-in page instead of silently losing your work.
-- **Demo account:** `demo@caseclarity.ai` / `demo1234` — only exists when `DEMO_ACCOUNT=true` (or in local development).
+### 4.1 Accounts and roles
+- One-click demo accounts for both roles; sign up, sign in, sign out.
+- New accounts' passwords are stored only as a **bcrypt hash**, never as plain text. Passwords need at least 8 characters.
+- Case workers cannot delete cases or reset demo data.
+- Honest note: because everything lives in the browser, accounts show *who did what* — they do not lock data away from someone using the same browser.
 
-### 3.2 Roles
-| Role | Can do |
-|---|---|
-| **Case Worker** (new sign-ups) | Everything except delete cases and reset demo data |
-| **Senior Case Worker** (demo account) | Everything, including delete cases and reset demo data |
-| **Admin** | Same as Senior Case Worker |
-
-### 3.3 Dashboard
-- Live counts: total cases, awaiting review, completed, missing documents.
-- Chart of cases by status.
-- "Needs your review" list of pending recommendations.
-- Recent cases and recent activity (newest first).
-- Bell icon shows the real number of recommendations waiting for review.
-
-### 3.4 Cases
-- Create a case (title, client, type, priority, description).
-- List, search and filter cases (also from the top search bar).
-- Case numbers are unique even if two people create cases at the same time.
+### 4.2 Dashboard and cases
+- Live counts, cases-by-status chart, "needs your review" list, recent cases and activity; the bell shows how many recommendations wait for review.
+- Create, list, search, filter and delete cases. Case numbers like `CC-2026-007` are assigned automatically.
 - Each case page has tabs: **Overview, Documents, Analysis, Recommendation, Human Review, Audit**.
-- Flag a case for investigation, log a document request, delete a case (senior roles).
 
-### 3.5 Documents
+### 4.3 Documents
 - Drag-and-drop or click to upload **PDF, DOCX, TXT, CSV, MD** (max 10 MB each).
-- Text is extracted on the server:
-  - **PDF** → real page-by-page text.
-  - **DOCX / TXT / CSV / MD** → text split into *estimated* pages (labelled "estimated").
-- View or download the extracted text.
-- Failed uploads clearly show ❌ and the reason.
-- **Required-documents checklist** per case type (e.g. Eviction needs ID, lease, notice, proof of income, rent history). It recognises similar names — e.g. `Pay_Stubs.pdf` counts as "Proof of Income".
-- **Completeness %** is calculated from the checklist and saved.
+- Text is extracted **in the browser** — PDFs with real page numbers, other types with estimated pages.
+- Required-documents checklist per case type; it recognises similar names (e.g. `Pay_Stubs.pdf` counts as "Proof of Income").
 
-### 3.6 AI analysis
-**Demo engine** (used when no AI key is set):
-- Finds the client's name, dates (labelled: deadline, effective date, date of birth…) and money amounts (labelled: rent, income, arrears, bill, debt…).
-- Finds **conflicts** only between similar things (e.g. two different salaries, two different rents, "position eliminated" but "position refilled").
-- Decides: *request missing documents* / *investigate conflicts* / *obtain remaining documents* / *proceed*.
-- Gives sensible results on all 6 sample cases.
+### 4.4 AI analysis
+- **Demo engine** (no key): finds names, labelled dates and money amounts, conflicts between similar figures, and missing documents; suggests the next step.
+- **Real AI** (with `LLM_API_KEY`): any OpenAI-compatible API. Every quote the AI gives is checked against the documents; anything it cannot find is marked **"Unverified"**. If it fails, the demo engine takes over and the app says why.
+- Labels are honest everywhere: "Live AI" or "Demo Mode", and each recommendation says which engine made it.
 
-**Real AI (LLM)** (used when `LLM_API_KEY` is set):
-- Works with any OpenAI-compatible API (default model `gpt-4o-mini`).
-- The server sends the documents with clear file and page markers.
-- **Every citation is checked** against the real documents. If the AI quotes something that isn't there, or a file that doesn't exist, the fact is marked **"Unverified"** with low confidence.
-- If the AI fails or times out, the app falls back to the demo engine and records why.
+### 4.5 Human review and audit trail
+- Approve / Modify / Reject with a comment; approved or rejected recommendations are locked.
+- Every upload, analysis, review, import, export, delete and reset is logged with the person and the time.
 
-**Labels are honest:** the app shows "Live AI" or "Demo Mode" correctly, and every recommendation says which engine made it (Live AI / Demo engine / Sample data).
+### 4.6 Integrations
+- CSV import with a report (duplicates, bad dates, missing columns); CSV export of cases and the audit trail.
+- Google Drive: simulated and clearly labelled.
 
-### 3.7 Recommendation and human review
-- Shows: title, summary, reasons, confidence (marked "uncalibrated"), evidence with file + page + quote, conflicts, missing information, uncertainties, next steps.
-- **Approve / Modify / Reject** with a comment.
-- The reviewer's name always comes from the logged-in user (cannot be faked).
-- After approve or reject, the recommendation is **locked**.
-- The app only says "saved" if the save really worked.
-
-### 3.8 Security
-- Every data API requires login.
-- Requests from other websites are blocked (CSRF protection).
-- All input is checked on the server.
-- Audit entries and reviews always use the real logged-in user's name.
-- Deleting a case removes its documents and facts, but **keeps its audit history**.
-- The AI API key stays on the server only.
-
-### 3.9 Audit trail
-- Every upload, analysis, review, import, export, delete and reset is logged with person and time.
-- Search and filter by category; export to CSV.
-
-### 3.10 Integrations
-- **CSV import:** reads client, title, type, priority, status, date, description, assignee. Reports duplicates, bad dates, unknown values and missing columns.
-- **CSV export:** cases and audit trail, properly quoted (commas and quotes are safe).
-- **Google Drive:** simulated (clearly labelled), with a case picker.
-
-### 3.11 Developer setup
-- `npm run dev` · `npm test` · `npm run lint` · `npm run typecheck` · `npm run build` · `npm run db:push`
-- Database settings come from `.env` (`DATABASE_URL`).
-- Typecheck, lint, build and all 46 tests pass — automatically on every push (GitHub Actions).
-- Next.js 16.4.6 (security fixes); `npm audit` finds 0 vulnerabilities in production packages.
+### 4.7 Cloudflare and quality
+- Builds for **Cloudflare Workers** (via vinext). The server part is tiny (about 380 KB) and stores nothing.
+- Tested in Cloudflare's own runtime on this computer: every page and flow works, including the real-AI path with a fake AI server.
+- 56 automated tests; typecheck, lint and both builds pass; CI runs them on every push.
+- Security fixes: Next.js 16.4.6; production packages have **0 known vulnerabilities**.
 
 ---
 
-## 4. What is REMAINING ❌
+## 5. What is REMAINING
 
-### 🔴 High priority (before the final demo)
+### 🔴 To finish the demo
 | # | Task | Why it matters |
 |---|---|---|
-| 1 | **Test the real AI with a real API key** | Only tested against a fake AI server so far. |
-| 2 | ~~Click through the whole app in a browser~~ ✅ | Done 20 Nov 2026 (desktop + phone). Found and fixed: dashboard and documents overflowing on phones, dates shifted by the time zone on some databases, a console error on signed-out pages. |
-| 3 | ~~Merge `fix/known-issues` into `main`~~ ✅ | Done 20 Nov 2026. |
-| 4 | **Set `DEMO_ACCOUNT=true`, `TRUST_PROXY=true` and `TRUSTED_IP_HEADER` (Vercel: `x-vercel-forwarded-for`) on the judges' deployment** | Otherwise the demo login is off in production, and strangers could temporarily lock it with wrong passwords. |
-| 5 | **Run `npm run db:push` + "Reset demo data" on existing databases** | New database columns were added. |
+| 1 | **Deploy to Cloudflare:** `npx cf auth login`, then `npm run deploy` | Needs your Cloudflare account — it prints the public link |
+| 2 | **Optional: test the real AI with a real API key** | Only tested with a fake AI server so far. See README → "Deploying to Cloudflare" |
+| 3 | **If you add an API key to the public site, protect it** (Cloudflare Access or a rate limit) | Otherwise anyone with the link can use up the AI credits |
 
-### 🟠 Medium priority (AI quality)
+### 🟠 AI quality
 | # | Task |
 |---|---|
-| 6 | **OCR** so scanned PDFs / photos can be read |
-| 7 | Support old **`.doc`** Word files |
-| 8 | **Real page numbers for Word files** (now estimated) |
-| 9 | **Keep the original uploaded files** (now only the text is saved) |
-| 10 | Per-document summaries |
-| 11 | Smarter demo engine (more field types, more conflict rules) |
+| 4 | OCR so scanned PDFs / photos can be read |
+| 5 | Old `.doc` Word files; real page numbers for Word files; keeping the original files |
+| 6 | Per-document summaries; a smarter demo engine |
 
-### 🟡 Security and accounts
+### 🟡 When a shared workspace is needed
 | # | Task |
 |---|---|
-| 12 | **Organizations / teams** — today every user of a deployment sees every case |
-| 13 | Password reset and email verification |
-| 14 | Admin screen to change user roles |
-| 15 | Shared rate limiting (today it is per server instance) |
-| 16 | Encrypted file storage and data-retention rules |
-| 16b | CAPTCHA after repeated failed logins (someone with many IPs can still lock an account for 15 minutes) |
+| 7 | Bring back a server database (the PostgreSQL version in git, or Cloudflare D1) so a team shares one workspace |
+| 8 | Real server-side logins, organizations/teams, password reset, admin screen for roles |
 
 ### 🔵 Integrations
 | # | Task |
 |---|---|
-| 17 | **Real Google Drive** connection (OAuth + Drive API) |
-| 18 | Column-mapping step for CSV imports |
+| 9 | Real Google Drive connection (OAuth + Drive API) |
+| 10 | Column-mapping step for CSV imports |
 
 ### ⚪ Testing and evaluation
 | # | Task |
 |---|---|
-| 19 | Automated API tests in the repo (they were run manually against a test database) |
-| 20 | Automated browser (end-to-end) tests |
-| 21 | ~~CI pipeline (run tests on every push)~~ ✅ Done — `.github/workflows/ci.yml` |
-| 22 | **Real evaluation**: timed study with case workers + accuracy benchmark, to replace the placeholder numbers on the Evaluation page |
+| 11 | Add the browser walkthrough to the repository as automated end-to-end tests |
+| 12 | **Real evaluation:** timed study with case workers + accuracy benchmark, to replace the placeholder numbers on the Evaluation page |
 
 ---
 
-## 5. How to run it (short version)
+## 6. How to run it (short version)
 
 ```bash
 npm install
-copy .env.example .env      # set DATABASE_URL to your PostgreSQL database
-npm run db:push             # create the tables
-npm run dev                 # open http://localhost:3000/login
+npm run dev                 # open http://localhost:3000/login and click a demo account
 ```
 
-Login: **`demo@caseclarity.ai`** / **`demo1234`**
+No database needed. To deploy: `npx cf auth login` then `npm run deploy`.
 
-Full setup steps are in [README.md](./README.md#installation-and-local-setup).
+Full steps are in [README.md](./README.md#quick-start).
