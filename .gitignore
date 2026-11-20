@@ -30,3 +30,11 @@ Thumbs.db
 # Misc
 *.pem
 .vercel
+/dist/
+.vinext/
+.cloudflare/
+
+# Cloudflare local secrets (never commit)
+.dev.vars
+.dev.vars.*
+!.dev.vars.example

@@ -1,0 +1,6 @@
+# Local secrets for the Cloudflare Worker preview (npm run start:vinext).
+# Copy to .dev.vars (gitignored) and uncomment the matching lines in
+# cloudflare.config.ts. Leave LLM_API_KEY empty to stay in Demo Mode.
+LLM_API_KEY=
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_MODEL=gpt-4o-mini

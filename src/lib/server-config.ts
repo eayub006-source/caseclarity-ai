@@ -1,17 +1,6 @@
-// Server-only configuration flags. Read process.env only here and in route handlers.
-
-export const DEFAULT_ORG = "Northside Legal Aid";
-
-// The demo account (demo@caseclarity.ai / demo1234) and the fictional seed data.
-// - DEMO_ACCOUNT=true   -> always enabled (use this for the judges' deployment)
-// - DEMO_ACCOUNT=false  -> always disabled
-// - unset               -> enabled in development, disabled in production
-export function isDemoEnabled(): boolean {
-  const flag = process.env.DEMO_ACCOUNT?.trim().toLowerCase();
-  if (flag === "true" || flag === "1") return true;
-  if (flag === "false" || flag === "0") return false;
-  return process.env.NODE_ENV !== "production";
-}
+// Server-only configuration. Read process.env only here and in route handlers.
+// On Cloudflare Workers these are Worker secrets, declared in
+// cloudflare.config.ts and exposed on process.env by nodejs_compat.
 
 export function llmConfig() {
   const apiKey = process.env.LLM_API_KEY || "";
@@ -21,4 +10,23 @@ export function llmConfig() {
     baseUrl: (process.env.LLM_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, ""),
     model: process.env.LLM_MODEL || "gpt-4o-mini",
   };
+}
+
+/**
+ * Blocks cross-site browser requests to the API (CSRF): the Origin header,
+ * or failing that Sec-Fetch-Site, must point at this site. Requests without
+ * either header (curl, server-to-server) are allowed.
+ */
+export function isSameOrigin(req: Request): boolean {
+  const origin = req.headers.get("origin");
+  if (origin) {
+    try {
+      const originHost = new URL(origin).host;
+      return originHost === new URL(req.url).host || originHost === req.headers.get("host");
+    } catch {
+      return false;
+    }
+  }
+  const site = req.headers.get("sec-fetch-site");
+  return !site || site === "same-origin" || site === "none";
 }

@@ -3,32 +3,34 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Mail, Lock, Eye, EyeOff, ShieldCheck, Sparkles, ArrowLeft } from "lucide-react";
-import { useStore, errorMessage, ApiError } from "@/lib/store";
+import { useStore, errorMessage } from "@/lib/store";
+import { DEMO_ACCOUNTS, DEMO_PASSWORD } from "@/data/demo-data";
+import { ROLE_LABELS } from "@/lib/roles";
 import { Logo, AiModeBanner } from "@/components/ui";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, config } = useStore();
-  // null = untouched: shows the demo account on deployments where it exists.
-  const [emailInput, setEmail] = useState<string | null>(null);
-  const [passwordInput, setPassword] = useState<string | null>(null);
-  const email = emailInput ?? (config.demoAccount ? "demo@caseclarity.ai" : "");
-  const password = passwordInput ?? (config.demoAccount ? "demo1234" : "");
+  const { login } = useStore();
+  const [email, setEmail] = useState(DEMO_ACCOUNTS[0].email);
+  const [password, setPassword] = useState(DEMO_PASSWORD);
   const [show, setShow] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const signIn = async (em: string, pw: string) => {
     setError(""); setLoading(true);
     try {
-      await login(email, password);
+      await login(em, pw);
       router.push("/dashboard");
     } catch (err) {
       setLoading(false);
-      if (err instanceof ApiError && err.status === 401) setError(config.demoAccount ? "Invalid email or password. Try the demo account below, or create a new account." : "Invalid email or password.");
-      else setError(errorMessage(err, "Sign-in failed. Please try again."));
+      setError(errorMessage(err, "Sign-in failed. Please try again."));
     }
+  };
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    void signIn(email, password);
   };
 
   return (
@@ -68,9 +70,19 @@ export default function LoginPage() {
             {error && <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{error}</div>}
             <button disabled={loading} className="w-full rounded-xl bg-[#0f2043] py-3 text-sm font-bold text-white shadow-md transition hover:bg-[#1e3a5f] disabled:opacity-60">{loading ? "Signing in…" : "Sign In"}</button>
           </form>
-          {config.demoAccount && <button onClick={() => { setEmail("demo@caseclarity.ai"); setPassword("demo1234"); }} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-blue-300 bg-blue-50 px-4 py-3 text-xs font-bold text-blue-800 hover:bg-blue-100">
-            <Sparkles size={14} /> Use demo account for judges — demo@caseclarity.ai / demo1234
-          </button>}
+          <div className="mt-3 rounded-xl border border-dashed border-blue-300 bg-blue-50 p-3">
+            <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold text-blue-800"><Sparkles size={13} /> <span className="uppercase tracking-wide">One-click demo accounts</span> · password <code className="rounded bg-white px-1 font-mono">{DEMO_PASSWORD}</code></div>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {DEMO_ACCOUNTS.map(a => (
+                <button key={a.id} type="button" disabled={loading} onClick={() => signIn(a.email, DEMO_PASSWORD)} className="min-w-0 rounded-lg border border-blue-200 bg-white px-3 py-2 text-left hover:border-blue-400 disabled:opacity-60">
+                  <span className="block truncate text-xs font-extrabold text-[#0f2043]">{a.name}</span>
+                  <span className="block truncate text-[11px] font-semibold text-blue-700">{ROLE_LABELS[a.role]}</span>
+                  <span className="block truncate text-[11px] text-slate-500">{a.email}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="mt-3 text-[11px] leading-relaxed text-slate-400">Demo build: accounts and case data are fictional and saved only in this browser.</p>
           <p className="mt-5 text-center text-sm text-slate-500">No account? <Link href="/signup" className="font-bold text-[#2563eb] hover:underline">Create one</Link></p>
         </div>
       </div>

@@ -1,10 +1,12 @@
-import { extractText } from "unpdf";
-import mammoth from "mammoth";
-
-// Real server-side document text extraction.
+// Real document text extraction. It runs in the browser, so uploaded files
+// never leave the visitor's machine: only the extracted text is kept, and it
+// is sent to a server only for Live AI analysis. The same code runs in Node
+// for the tests. Both parsers are loaded on demand, so they cost nothing
+// until a file is uploaded.
 // - PDF: Mozilla PDF.js via unpdf, real per-page text.
-// - DOCX: mammoth (real OOXML parsing). DOCX has no fixed pages, so the text is
-//   split into estimated pages (~1,800 characters, at paragraph boundaries).
+// - DOCX: mammoth's self-contained browser build (real OOXML parsing). DOCX
+//   has no fixed pages, so the text is split into estimated pages (~1,800
+//   characters, at paragraph boundaries).
 // - TXT / CSV / MD: UTF-8 decode, split into estimated pages the same way.
 // Pages are joined with a form-feed (\f) character so downstream analysis can
 // attribute every extracted fact to a page number.
@@ -19,6 +21,9 @@ export interface ExtractResult {
   pagesEstimated: boolean;
   warning?: string;
 }
+
+export class UnsupportedFileError extends Error {}
+export class FileTooLargeError extends Error {}
 
 // Splits text into ~pageChars pages, breaking at blank lines, then lines,
 // then spaces, so a page boundary never cuts a word in half.
@@ -42,11 +47,26 @@ export function paginate(text: string, pageChars = EST_PAGE_CHARS): string[] {
 
 const ESTIMATED_NOTE = "Page numbers for this file type are estimated (~1,800 characters per page).";
 
-export async function extractDocument(buffer: Buffer, filename: string): Promise<ExtractResult> {
+interface MammothLike { extractRawText(input: { arrayBuffer: ArrayBuffer }): Promise<{ value: string }> }
+
+async function docxToText(bytes: Uint8Array): Promise<string> {
+  // mammoth's browser build bundles its own dependencies (no Node built-ins),
+  // so it works in every runtime. It needs an ArrayBuffer holding just the file.
+  const mod = (await import("mammoth/mammoth.browser.min.js")) as unknown as MammothLike & { default?: MammothLike };
+  const mammoth = mod.default ?? mod;
+  const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  const result = await mammoth.extractRawText({ arrayBuffer });
+  return result.value || "";
+}
+
+export async function extractDocument(bytes: Uint8Array, filename: string): Promise<ExtractResult> {
   const ext = (filename.split(".").pop() || "").toLowerCase();
+  if (bytes.byteLength > MAX_UPLOAD_BYTES) throw new FileTooLargeError("File exceeds the 10 MB limit");
 
   if (ext === "pdf") {
-    const { text, totalPages } = await extractText(new Uint8Array(buffer), { mergePages: false });
+    const { extractText } = await import("unpdf");
+    // PDF.js may take ownership of the buffer it is given, so pass a copy.
+    const { text, totalPages } = await extractText(new Uint8Array(bytes), { mergePages: false });
     const pages = (Array.isArray(text) ? text : [text]).map((p) => p.replace(/\f/g, "\n"));
     const joined = pages.join("\f");
     return {
@@ -59,9 +79,7 @@ export async function extractDocument(buffer: Buffer, filename: string): Promise
   }
 
   if (ext === "docx") {
-    // mammoth's Node build accepts a Node Buffer via options.buffer.
-    const result = await mammoth.extractRawText({ buffer });
-    const raw = result.value || "";
+    const raw = await docxToText(bytes);
     const pages = paginate(raw);
     return {
       text: pages.join("\f"),
@@ -73,7 +91,7 @@ export async function extractDocument(buffer: Buffer, filename: string): Promise
   }
 
   if (ext === "txt" || ext === "csv" || ext === "md") {
-    const raw = buffer.toString("utf-8");
+    const raw = new TextDecoder("utf-8").decode(bytes);
     const pages = paginate(raw);
     return {
       text: pages.join("\f"),
@@ -87,4 +105,14 @@ export async function extractDocument(buffer: Buffer, filename: string): Promise
   throw new UnsupportedFileError(`Unsupported file type ".${ext}". Upload PDF, DOCX, TXT, CSV or MD.`);
 }
 
-export class UnsupportedFileError extends Error {}
+/** Reads a browser File and extracts its text. */
+export async function extractFile(file: File): Promise<ExtractResult & { name: string }> {
+  if (file.size > MAX_UPLOAD_BYTES) throw new FileTooLargeError("File exceeds the 10 MB limit");
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  try {
+    return { name: file.name, ...(await extractDocument(bytes, file.name)) };
+  } catch (e) {
+    if (e instanceof UnsupportedFileError || e instanceof FileTooLargeError) throw e;
+    throw new Error("Could not read this file. It may be corrupted or password-protected.");
+  }
+}

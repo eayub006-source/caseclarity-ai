@@ -1,21 +1,26 @@
 "use client";
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
-import { CaseItem, DocItem, Extraction, Recommendation, AuditEntry, User, AppConfig } from "./core";
+import { CaseItem, DocItem, Extraction, Recommendation, User, AppConfig } from "./core";
 import { canManage } from "./roles";
 import type { VerifiedResult } from "./llm";
+import { MAX_PROMPT_CHARS } from "./llm";
+import { kvDelete, kvGet, kvSet } from "./browser-db";
+import { authenticate, createAccount, findUser, type LocalAccount } from "./accounts";
+import * as W from "./workspace";
 
 export interface ExtractResponse { name: string; text: string; pageCount: number; type: string; pagesEstimated: boolean; warning?: string; }
 export type AnalyzeResponse = { mode: "llm"; model: string; result: VerifiedResult } | { mode: "demo"; reason: string };
 
-// PostgreSQL-backed store. All data is loaded from and written to the
-// Next.js API routes (which query PostgreSQL via Drizzle). Authentication
-// uses server-side sessions (httpOnly cookie) — no credentials or passwords
-// are stored in localStorage.
+// The app's single data gateway. There is no database: the workspace starts
+// as a copy of the fictional dataset in src/data/demo-data.ts and every
+// change is saved in this browser (IndexedDB, see ./browser-db.ts). Each
+// visitor therefore has a private copy, and "Reset demo data" restores it.
+// The rules (validation, case numbers, locked reviews, append-only audit)
+// live in ./workspace.ts. The only network calls are /api/config and the
+// optional Live AI analysis (/api/analyze).
 //
-// Every mutation checks the server's answer. On failure it throws an Error
-// with a readable message, so callers never report success for a write that
-// did not happen. A 401 on any data call means the session expired: the user
-// is signed out locally and the workspace shows "Sign in required".
+// Every mutation throws a readable Error when a rule is broken, so callers
+// never report success for a change that did not happen.
 
 export class ApiError extends Error {
   constructor(message: string, public status: number) { super(message); }
@@ -24,9 +29,6 @@ export class ApiError extends Error {
 export function errorMessage(e: unknown, fallback = "Something went wrong"): string {
   return e instanceof Error && e.message ? e.message : fallback;
 }
-
-type NewCase = Omit<CaseItem, "id" | "caseNumber" | "createdAt" | "updatedAt" | "completeness">;
-type ReviewPatch = { status: "approved" | "rejected" | "modified"; reviewComment?: string; summary?: string };
 
 interface Store {
   user: User | null;
@@ -37,17 +39,17 @@ interface Store {
   docs: DocItem[];
   extractions: Extraction[];
   recs: Recommendation[];
-  audit: AuditEntry[];
+  audit: W.Workspace["audit"];
   login: (email: string, password: string) => Promise<void>;
   signup: (name: string, email: string, password: string, org: string) => Promise<void>;
   logout: () => Promise<void>;
-  addCase: (c: NewCase) => Promise<CaseItem>;
+  addCase: (c: W.NewCase) => Promise<CaseItem>;
   updateCase: (id: string, patch: Partial<CaseItem>) => Promise<CaseItem>;
   addDoc: (d: Omit<DocItem, "id" | "uploadedAt">) => Promise<DocItem>;
   addRec: (r: Recommendation) => Promise<Recommendation>;
-  reviewRec: (id: string, patch: ReviewPatch) => Promise<Recommendation>;
+  reviewRec: (id: string, patch: W.ReviewPatch) => Promise<Recommendation>;
   log: (caseId: string | null, action: string, details: string, category: string) => Promise<void>;
-  importCases: (items: CaseItem[]) => Promise<{ added: number; skipped: number; invalid: number }>;
+  importCases: (items: Partial<W.NewCase>[]) => Promise<{ added: number; skipped: number; invalid: number }>;
   resetDemo: () => Promise<void>;
   deleteCase: (id: string) => Promise<void>;
   extractFile: (file: File) => Promise<ExtractResponse>;
@@ -57,21 +59,38 @@ interface Store {
   notify: (msg: string, tone?: "ok" | "warn") => void;
 }
 
-const DEFAULT_CONFIG: AppConfig = { aiMode: "demo", model: null, demoAccount: false };
+const WORKSPACE_KEY = "workspace";
+const ACCOUNTS_KEY = "accounts";
+const SESSION_KEY = "session";
+const DEFAULT_CONFIG: AppConfig = { aiMode: "demo", model: null };
+const EMPTY: W.Workspace = { version: W.WORKSPACE_VERSION, cases: [], docs: [], extractions: [], recs: [], audit: [] };
+const STORAGE_BLOCKED = "This browser is blocking site storage, so changes work now but will be lost when you reload.";
+
 const Ctx = createContext<Store | null>(null);
+
+function signedIn(u: User | null): User {
+  if (!u) throw new Error("Please sign in again.");
+  return u;
+}
+
+function manager(u: User | null, what: string): User {
+  const user = signedIn(u);
+  if (!canManage(user.role)) throw new Error(`Only senior case workers and admins can ${what}.`);
+  return user;
+}
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
   const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
-  const [cases, setCases] = useState<CaseItem[]>([]);
-  const [docs, setDocs] = useState<DocItem[]>([]);
-  const [extractions, setExtractions] = useState<Extraction[]>([]);
-  const [recs, setRecs] = useState<Recommendation[]>([]);
-  const [audit, setAudit] = useState<AuditEntry[]>([]);
+  const [ws, setWs] = useState<W.Workspace>(EMPTY);
   const [toast, setToast] = useState<{ msg: string; tone: "ok" | "warn" } | null>(null);
+  // Refs hold the latest values so several awaited mutations in one handler
+  // (e.g. analysis: facts, recommendation, case status, audit) build on each other.
+  const wsRef = useRef<W.Workspace>(EMPTY);
   const userRef = useRef<User | null>(null);
-  useEffect(() => { userRef.current = user; }, [user]);
+  const accountsRef = useRef<LocalAccount[]>([]);
+  const storageWarned = useRef(false);
 
   const notify = useCallback((msg: string, tone: "ok" | "warn" = "ok") => setToast({ msg, tone }), []);
   useEffect(() => {
@@ -80,185 +99,179 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     return () => clearTimeout(t);
   }, [toast]);
 
-  const clearData = useCallback(() => {
-    setCases([]); setDocs([]); setExtractions([]); setRecs([]); setAudit([]);
+  const warnStorage = useCallback(() => {
+    if (storageWarned.current) return;
+    storageWarned.current = true;
+    notify(STORAGE_BLOCKED, "warn");
+  }, [notify]);
+
+  // Applies a new workspace and saves it. IndexedDB runs transactions on one
+  // store in the order they were created, so the latest state always wins.
+  const apply = useCallback((next: W.Workspace) => {
+    wsRef.current = next;
+    setWs(next);
+    void kvSet(WORKSPACE_KEY, next).then((ok) => { if (!ok) warnStorage(); });
+  }, [warnStorage]);
+
+  const setSignedIn = useCallback((u: User | null) => {
+    userRef.current = u;
+    setUser(u);
   }, []);
 
-  // JSON request that throws ApiError on any non-2xx answer.
-  const request = useCallback(async <T,>(path: string, init?: RequestInit): Promise<T> => {
+  // First load: the saved workspace (or the demo dataset), accounts and sign-in.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [stored, accounts, session] = await Promise.all([
+        kvGet<unknown>(WORKSPACE_KEY),
+        kvGet<LocalAccount[]>(ACCOUNTS_KEY),
+        kvGet<{ userId?: string }>(SESSION_KEY),
+      ]);
+      if (cancelled) return;
+      const initial = W.loadWorkspace(stored) ?? W.demoWorkspace();
+      wsRef.current = initial;
+      setWs(initial);
+      accountsRef.current = Array.isArray(accounts) ? accounts : [];
+      setSignedIn(findUser(accountsRef.current, session?.userId));
+      setReady(true);
+    })();
+    fetch("/api/config")
+      .then((r) => (r.ok ? (r.json() as Promise<Partial<AppConfig>>) : null))
+      .then((cfg) => { if (!cancelled && cfg && (cfg.aiMode === "llm" || cfg.aiMode === "demo")) setConfig({ aiMode: cfg.aiMode, model: cfg.model ?? null }); })
+      .catch(() => { /* offline: stay in Demo Mode */ });
+    return () => { cancelled = true; };
+  }, [setSignedIn]);
+
+  // ---------- Accounts ----------
+
+  const startSession = useCallback(async (u: User) => {
+    if (!(await kvSet(SESSION_KEY, { userId: u.id }))) warnStorage();
+    setSignedIn(u);
+  }, [setSignedIn, warnStorage]);
+
+  const freshAccounts = useCallback(async () => {
+    const stored = await kvGet<LocalAccount[]>(ACCOUNTS_KEY);
+    if (Array.isArray(stored)) accountsRef.current = stored; // another tab may have added one
+    return accountsRef.current;
+  }, []);
+
+  const login = useCallback(async (email: string, password: string) => {
+    const u = await authenticate(await freshAccounts(), email, password);
+    await startSession(u);
+  }, [freshAccounts, startSession]);
+
+  const signup = useCallback(async (name: string, email: string, password: string, org: string) => {
+    const { accounts, user: u } = await createAccount(await freshAccounts(), { name, email, password, org }, W.newId());
+    accountsRef.current = accounts;
+    if (!(await kvSet(ACCOUNTS_KEY, accounts))) warnStorage();
+    await startSession(u);
+  }, [freshAccounts, startSession, warnStorage]);
+
+  const logout = useCallback(async () => {
+    await kvDelete(SESSION_KEY);
+    setSignedIn(null);
+  }, [setSignedIn]);
+
+  // ---------- Workspace ----------
+
+  const log = useCallback(async (caseId: string | null, action: string, details: string, category: string) => {
+    try {
+      apply(W.appendAudit(wsRef.current, caseId, action, details, category, userRef.current?.name || "System").ws);
+    } catch (e) {
+      notify(`Audit entry "${action}" could not be saved: ${errorMessage(e)}`, "warn");
+    }
+  }, [apply, notify]);
+
+  const addCase = useCallback(async (c: W.NewCase) => {
+    const r = W.createCase(wsRef.current, c, signedIn(userRef.current).name);
+    apply(r.ws);
+    return r.item;
+  }, [apply]);
+
+  const updateCase = useCallback(async (id: string, patch: Partial<CaseItem>) => {
+    const r = W.updateCase(wsRef.current, id, patch);
+    apply(r.ws);
+    return r.item;
+  }, [apply]);
+
+  const addDoc = useCallback(async (d: Omit<DocItem, "id" | "uploadedAt">) => {
+    const r = W.addDocument(wsRef.current, d);
+    apply(r.ws);
+    return r.item;
+  }, [apply]);
+
+  const replaceCaseExtractions = useCallback(async (caseId: string, list: Extraction[]) => {
+    apply(W.replaceExtractions(wsRef.current, caseId, list));
+  }, [apply]);
+
+  const addRec = useCallback(async (rec: Recommendation) => {
+    const r = W.addRecommendation(wsRef.current, rec);
+    apply(r.ws);
+    return r.item;
+  }, [apply]);
+
+  const reviewRec = useCallback(async (id: string, patch: W.ReviewPatch) => {
+    const r = W.reviewRecommendation(wsRef.current, id, patch, signedIn(userRef.current).name);
+    apply(r.ws);
+    return r.item;
+  }, [apply]);
+
+  const importCases = useCallback(async (items: Partial<W.NewCase>[]) => {
+    const r = W.importCases(wsRef.current, items);
+    apply(r.ws);
+    return { added: r.added, skipped: r.skipped, invalid: r.invalid };
+  }, [apply]);
+
+  const resetDemo = useCallback(async () => {
+    const u = manager(userRef.current, "reset demo data");
+    apply(W.appendAudit(W.demoWorkspace(), null, "Demo data reset", "Workspace reset to the fictional demo data", "system", u.name).ws);
+  }, [apply]);
+
+  const deleteCase = useCallback(async (id: string) => {
+    const u = manager(userRef.current, "delete cases");
+    apply(W.deleteCase(wsRef.current, id, u.name));
+  }, [apply]);
+
+  // Text extraction runs in the browser; the parsers load on first use.
+  // The SSR guard lets the Cloudflare (Vite) server build drop PDF.js and
+  // mammoth entirely — the Worker never parses files.
+  const extractFile = useCallback(async (file: File): Promise<ExtractResponse> => {
+    if (import.meta.env?.SSR) throw new Error("Text extraction runs in the browser.");
+    const { extractFile: extract } = await import("./extract");
+    return extract(file);
+  }, []);
+
+  // Live AI runs on the server (it holds the API key). Without a key the app
+  // is in Demo Mode and the caller runs the local demo engine instead.
+  const analyze = useCallback(async (caseId: string): Promise<AnalyzeResponse> => {
+    if (config.aiMode !== "llm") return { mode: "demo", reason: "No LLM_API_KEY configured — using the local demo engine." };
+    const c = wsRef.current.cases.find((x) => x.id === caseId);
+    if (!c) throw new Error("Case not found");
+    // Send documents in upload order, trimmed to what the prompt can hold.
+    let budget = MAX_PROMPT_CHARS;
+    const documents = wsRef.current.docs.filter((d) => d.caseId === caseId).reverse().map((d) => {
+      const extractedText = (d.extractedText || "").slice(0, Math.max(0, budget));
+      budget -= extractedText.length;
+      return { id: d.id, name: d.name, extractedText };
+    });
     let res: Response;
     try {
-      res = await fetch(path, {
-        ...init,
-        // FormData sets its own multipart Content-Type.
-        headers: init?.body instanceof FormData ? init?.headers : { "Content-Type": "application/json", ...(init?.headers || {}) },
-        credentials: "same-origin",
+      res = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ case: { title: c.title, clientName: c.clientName, caseType: c.caseType }, documents }),
       });
     } catch {
       throw new ApiError("Network error — check your connection and try again.", 0);
     }
-    const data = await res.json().catch(() => ({}));
-    if (res.status === 401 && !path.startsWith("/api/auth") && userRef.current) {
-      setUser(null);
-      clearData();
-      notify("Your session has expired. Please sign in again.", "warn");
-    }
-    if (!res.ok) throw new ApiError(data?.error || `Request failed (HTTP ${res.status})`, res.status);
-    return data as T;
-  }, [clearData, notify]);
-
-  const loadAll = useCallback(async () => {
-    const [c, d, e, r, a] = await Promise.all([
-      request<{ cases: CaseItem[] }>("/api/cases"),
-      request<{ documents: DocItem[] }>("/api/documents"),
-      request<{ extractions: Extraction[] }>("/api/extractions"),
-      request<{ recommendations: Recommendation[] }>("/api/recommendations"),
-      request<{ audit: AuditEntry[] }>("/api/audit"),
-    ]);
-    setCases(c.cases || []); setDocs(d.documents || []); setExtractions(e.extractions || []);
-    setRecs(r.recommendations || []); setAudit(a.audit || []);
-  }, [request]);
-
-  // First run with demo mode on: load the fictional dataset.
-  const ensureSeed = useCallback(async (cfg: AppConfig) => {
-    if (!cfg.demoAccount) return;
-    try { await request("/api/seed", { method: "POST" }); } catch { /* already seeded or not allowed */ }
-  }, [request]);
-
-  const loadConfig = useCallback(async (): Promise<AppConfig> => {
-    try {
-      const cfg = await request<AppConfig>("/api/config");
-      setConfig(cfg);
-      return cfg;
-    } catch {
-      return DEFAULT_CONFIG;
-    }
-  }, [request]);
-
-  const startSession = useCallback(async (u: User, cfg: AppConfig) => {
-    setUser(u);
-    userRef.current = u;
-    await ensureSeed(cfg);
-    await loadAll();
-  }, [ensureSeed, loadAll]);
-
-  // Restore session on first load.
-  useEffect(() => {
-    (async () => {
-      const cfg = await loadConfig();
-      try {
-        const me = await request<{ user: User }>("/api/auth");
-        if (me.user) await startSession(me.user, cfg);
-      } catch (e) {
-        if (!(e instanceof ApiError && e.status === 401)) notify(`Could not load the workspace: ${errorMessage(e)}`, "warn");
-      }
-      setReady(true);
-    })();
-  }, [loadConfig, request, startSession, notify]);
-
-  const log = useCallback(async (caseId: string | null, action: string, details: string, category: string) => {
-    const tmpId = "tmp-" + Math.random().toString(36).slice(2, 9);
-    const entry: AuditEntry = { id: tmpId, caseId, actor: userRef.current?.name || "System", action, details, category, timestamp: new Date().toISOString() };
-    setAudit((prev) => [entry, ...prev]);
-    try {
-      const data = await request<{ entry: AuditEntry }>("/api/audit", { method: "POST", body: JSON.stringify({ caseId, action, details, category }) });
-      setAudit((prev) => prev.map((a) => (a.id === tmpId ? data.entry : a)));
-    } catch (e) {
-      setAudit((prev) => prev.filter((a) => a.id !== tmpId));
-      notify(`Audit entry "${action}" could not be saved: ${errorMessage(e)}`, "warn");
-    }
-  }, [request, notify]);
-
-  const login = useCallback(async (email: string, password: string) => {
-    const data = await request<{ user: User }>("/api/auth", { method: "POST", body: JSON.stringify({ action: "login", email, password }) });
-    await startSession(data.user, config);
-  }, [request, startSession, config]);
-
-  const signup = useCallback(async (name: string, email: string, password: string, org: string) => {
-    const data = await request<{ user: User }>("/api/auth", { method: "POST", body: JSON.stringify({ action: "signup", name, email, password, org }) });
-    await startSession(data.user, config);
-  }, [request, startSession, config]);
-
-  const logout = useCallback(async () => {
-    await request("/api/auth", { method: "POST", body: JSON.stringify({ action: "logout" }) }).catch(() => {});
-    setUser(null);
-    userRef.current = null;
-    clearData();
-  }, [request, clearData]);
-
-  const addCase = useCallback(async (c: NewCase) => {
-    const data = await request<{ case: CaseItem }>("/api/cases", { method: "POST", body: JSON.stringify(c) });
-    setCases((prev) => [data.case, ...prev]);
-    return data.case;
-  }, [request]);
-
-  const updateCase = useCallback(async (id: string, patch: Partial<CaseItem>) => {
-    const data = await request<{ case: CaseItem }>(`/api/cases/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
-    setCases((prev) => prev.map((c) => (c.id === id ? data.case : c)));
-    return data.case;
-  }, [request]);
-
-  const addDoc = useCallback(async (d: Omit<DocItem, "id" | "uploadedAt">) => {
-    const data = await request<{ document: DocItem }>("/api/documents", { method: "POST", body: JSON.stringify(d) });
-    setDocs((prev) => [data.document, ...prev]);
-    return data.document;
-  }, [request]);
-
-  const replaceCaseExtractions = useCallback(async (caseId: string, list: Extraction[]) => {
-    await request(`/api/extractions?caseId=${encodeURIComponent(caseId)}`, { method: "DELETE" });
-    setExtractions((prev) => prev.filter((e) => e.caseId !== caseId));
-    if (list.length) {
-      const data = await request<{ extractions: Extraction[] }>("/api/extractions", { method: "POST", body: JSON.stringify({ items: list }) });
-      setExtractions((prev) => [...prev, ...(data.extractions || [])]);
-    }
-  }, [request]);
-
-  const addRec = useCallback(async (r: Recommendation) => {
-    const data = await request<{ recommendation: Recommendation }>("/api/recommendations", { method: "POST", body: JSON.stringify(r) });
-    setRecs((prev) => [data.recommendation, ...prev]);
-    return data.recommendation;
-  }, [request]);
-
-  const reviewRec = useCallback(async (id: string, patch: ReviewPatch) => {
-    const data = await request<{ recommendation: Recommendation }>(`/api/recommendations/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
-    setRecs((prev) => prev.map((r) => (r.id === id ? data.recommendation : r)));
-    return data.recommendation;
-  }, [request]);
-
-  const importCases = useCallback(async (items: CaseItem[]) => {
-    const data = await request<{ added: number; skipped: number; invalid: number; cases: CaseItem[] }>("/api/cases", { method: "POST", body: JSON.stringify({ items }) });
-    if (data.cases?.length) setCases((prev) => [...[...data.cases].reverse(), ...prev]);
-    return { added: data.added || 0, skipped: data.skipped || 0, invalid: data.invalid || 0 };
-  }, [request]);
-
-  const resetDemo = useCallback(async () => {
-    await request("/api/seed?reset=1", { method: "POST" });
-    await loadAll();
-  }, [request, loadAll]);
-
-  const deleteCase = useCallback(async (id: string) => {
-    await request(`/api/cases/${id}`, { method: "DELETE" });
-    setCases((prev) => prev.filter((c) => c.id !== id));
-    setDocs((prev) => prev.filter((d) => d.caseId !== id));
-    setExtractions((prev) => prev.filter((e) => e.caseId !== id));
-    setRecs((prev) => prev.filter((r) => r.caseId !== id));
-    // The server keeps the audit history and adds a "Case deleted" entry.
-    const a = await request<{ audit: AuditEntry[] }>("/api/audit").catch(() => null);
-    if (a) setAudit(a.audit);
-  }, [request]);
-
-  const extractFile = useCallback(async (file: File) => {
-    const fd = new FormData();
-    fd.append("file", file);
-    return request<ExtractResponse>("/api/extract", { method: "POST", body: fd });
-  }, [request]);
-
-  const analyze = useCallback(async (caseId: string) => {
-    return request<AnalyzeResponse>("/api/analyze", { method: "POST", body: JSON.stringify({ caseId }) });
-  }, [request]);
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) throw new ApiError(data.error || `Request failed (HTTP ${res.status})`, res.status);
+    return data as unknown as AnalyzeResponse;
+  }, [config.aiMode]);
 
   const value: Store = {
-    user, ready, config, isManager: canManage(user?.role), cases, docs, extractions, recs, audit,
+    user, ready, config, isManager: canManage(user?.role),
+    cases: ws.cases, docs: ws.docs, extractions: ws.extractions, recs: ws.recs, audit: ws.audit,
     login, signup, logout, addCase, updateCase, addDoc, addRec, reviewRec,
     log, importCases, resetDemo, deleteCase, extractFile, analyze, replaceCaseExtractions, toast, notify,
   };

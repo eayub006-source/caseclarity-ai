@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 
-// Passwords are only ever stored as bcrypt hashes (cost 10). Plaintext
-// passwords are never persisted in the database or localStorage.
+// Passwords of accounts created on the sign-up page are only ever stored as
+// bcrypt hashes (cost 10) — never in plain text. Works in the browser and Node.
 export const MIN_PASSWORD_LENGTH = 8;
 
 export async function hashPassword(password: string): Promise<string> {

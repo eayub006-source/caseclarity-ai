@@ -44,7 +44,7 @@ export default function CaseDetailPage() {
   const recLocked = caseRec?.status === "approved" || caseRec?.status === "rejected";
   const modeLabel = config.aiMode === "llm" ? "Live AI" : "Demo Mode";
 
-  // Real server-side extraction (PDF.js / mammoth), then the document is saved
+  // Real extraction in the browser (PDF.js / mammoth), then the document is saved
   // and the case's completeness is recalculated from the checklist.
   const handleFiles = async (files: FileList | File[]) => {
     const list = Array.from(files);
@@ -72,8 +72,8 @@ export default function CaseDetailPage() {
     }
   };
 
-  // Analysis: the server runs the real LLM when a key is configured and
-  // verifies its citations. Otherwise it answers "demo" with a reason, and the
+  // Analysis: with an LLM key configured, the server runs the real LLM on the
+  // documents' text and verifies its citations. Otherwise (or if it fails) the
   // deterministic demo engine runs here. Both paths are labelled in the audit.
   const runAI = async () => {
     setAnalyzing(true);
@@ -270,7 +270,7 @@ export default function CaseDetailPage() {
           <div onDragOver={e => { e.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={e => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }} onClick={() => fileRef.current?.click()} className={`cursor-pointer rounded-3xl border-2 border-dashed p-8 text-center transition ${dragOver ? "border-blue-500 bg-blue-50" : "border-slate-300 bg-white hover:border-blue-400"}`}>
             <UploadCloud size={32} className="mx-auto text-blue-500" />
             <div className="mt-2 text-sm font-extrabold text-slate-800">Drag & drop PDF, DOCX, TXT or CSV files here</div>
-            <div className="mt-1 text-xs text-slate-400">or click to browse · up to 10 MB each · text is extracted on the server (scanned PDFs need OCR, not yet supported)</div>
+            <div className="mt-1 text-xs text-slate-400">or click to browse · up to 10 MB each · text is extracted in your browser — the file is not uploaded anywhere (scanned PDFs need OCR, not yet supported)</div>
           </div>
           {caseDocs.length === 0 ? (
             <EmptyState icon={<FileText size={22} />} title="No documents yet" desc="Upload at least one document, then run AI Analysis to extract facts and generate a recommendation." />

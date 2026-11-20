@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { runAnalysis, seedCases, seedDocs, checkRequiredDocs, DocItem } from "../src/lib/core";
+import { runAnalysis, checkRequiredDocs, DocItem } from "../src/lib/core";
+import { seedCases, seedDocs } from "../src/data/demo-data";
 
 const cases = seedCases();
 const docs = seedDocs();

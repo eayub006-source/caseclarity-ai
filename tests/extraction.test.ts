@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import JSZip from "jszip";
 import { extractDocument } from "../src/lib/extract";
-import { runAnalysis, seedCases, DocItem } from "../src/lib/core";
+import { runAnalysis, DocItem } from "../src/lib/core";
+import { seedCases } from "../src/data/demo-data";
 
 // Builds a minimal but valid single-page PDF with the given text.
 function makePdf(text: string): Buffer {

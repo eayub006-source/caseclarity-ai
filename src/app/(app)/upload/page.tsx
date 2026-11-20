@@ -13,7 +13,7 @@ export default function UploadPage() {
   const [queue, setQueue] = useState<{ key: string; name: string; size: number; status: "processing" | "processed" | "failed"; note?: string }[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Real server-side extraction via /api/extract (PDF.js for PDF, mammoth for DOCX).
+  // Real extraction in the browser (PDF.js for PDF, mammoth for DOCX) — files are not uploaded anywhere.
   const handleFiles = async (files: FileList | File[]) => {
     if (!caseId) { notify("Select a destination case before uploading.", "warn"); return; }
     const target = cases.find(c => c.id === caseId);
@@ -60,7 +60,7 @@ export default function UploadPage() {
         <div onDragOver={e => { e.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={e => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }} onClick={() => fileRef.current?.click()} className={`mt-4 cursor-pointer rounded-3xl border-2 border-dashed p-10 text-center transition ${dragOver ? "border-blue-500 bg-blue-50" : "border-slate-300 hover:border-blue-400"}`}>
           <UploadCloud size={36} className="mx-auto text-blue-500" />
           <div className="mt-2 text-sm font-extrabold text-slate-800">Drag & drop files here, or click to browse</div>
-          <div className="mt-1 text-xs text-slate-400">PDF · DOCX · TXT · CSV — up to 10 MB each · text is extracted on the server</div>
+          <div className="mt-1 text-xs text-slate-400">PDF · DOCX · TXT · CSV — up to 10 MB each · text is extracted in your browser</div>
           <input ref={fileRef} type="file" multiple accept=".pdf,.docx,.txt,.csv,.md" className="hidden" onChange={e => { if (e.target.files) handleFiles(e.target.files); e.target.value = ""; }} />
         </div>
         {queue.length > 0 && (

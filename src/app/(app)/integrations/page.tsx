@@ -45,7 +45,7 @@ export default function IntegrationsPage() {
       if (rows.length === 0) warnings.push("File has a header but no data rows.");
       const { added, skipped, invalid } = rows.length ? await importCases(items) : { added: 0, skipped: 0, invalid: 0 };
       if (skipped > 0) warnings.push(`${skipped} duplicate record(s) skipped (same client + title).`);
-      if (invalid > 0) warnings.push(`${invalid} row(s) rejected by the server as invalid.`);
+      if (invalid > 0) warnings.push(`${invalid} row(s) rejected as invalid (missing title or client name).`);
       setReport({ total: rows.length, added, skipped, invalid, warnings });
       await log(null, "CSV import", `Imported ${added} case(s), skipped ${skipped} duplicate(s)${invalid ? `, rejected ${invalid}` : ""} from ${file.name}`, "integration");
     } catch (e) {
@@ -97,7 +97,7 @@ export default function IntegrationsPage() {
       </div>
       <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-relaxed text-amber-800">
         <Info size={15} className="mt-0.5 shrink-0" />
-        <span><b>Google Drive is simulated</b> — no live connection and no real file content. <b>CSV import/export is live</b> and writes to the database.</span>
+        <span><b>Google Drive is simulated</b> — no live connection and no real file content. <b>CSV import/export is real</b> and saves the imported cases in this browser.</span>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">

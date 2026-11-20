@@ -1,13 +1,7 @@
-import { db } from "@/db";
-import { sql } from "drizzle-orm";
-
 export const dynamic = "force-dynamic";
 
+// Liveness check for hosting platforms. There is no database to check:
+// all case data lives in each visitor's browser.
 export async function GET() {
-  try {
-    await db.execute(sql`select 1`);
-    return Response.json({ ok: true });
-  } catch {
-    return Response.json({ ok: false }, { status: 500 });
-  }
+  return Response.json({ ok: true });
 }

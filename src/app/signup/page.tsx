@@ -19,7 +19,7 @@ export default function SignupPage() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Must match MIN_PASSWORD_LENGTH in src/lib/password.ts (enforced on the server too).
+    // Must match MIN_PASSWORD_LENGTH in src/lib/password.ts (enforced again in src/lib/accounts.ts).
     if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
     setError(""); setLoading(true);
     try {

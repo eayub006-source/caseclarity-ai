@@ -10,7 +10,7 @@ import { toCSV, downloadCSV } from "@/lib/csv";
 export default function CasesPage() {
   const { cases, log } = useStore();
   // The top-bar search sends ?q=… here. (This page only renders in the browser:
-  // the workspace layout waits for the session check first.)
+  // the workspace layout waits for the saved sign-in to load first.)
   const [q, setQ] = useState(() => (typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("q") || ""));
   const [status, setStatus] = useState("all");
   const [type, setType] = useState("all");

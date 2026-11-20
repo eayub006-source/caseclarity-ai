@@ -11,8 +11,6 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     env:
-      # Never contacted: tests need no database, and the build only checks that it is set.
-      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/app_db
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
       - uses: actions/checkout@v4
@@ -24,4 +22,5 @@ jobs:
       - run: npm test
       - run: npm run typecheck
       - run: npm run lint
-      - run: npm run build
+      - run: npm run build             # Next.js build (local development parity)
+      - run: npm run build:cloudflare  # Cloudflare Workers build (what gets deployed)
