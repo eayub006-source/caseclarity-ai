@@ -52,7 +52,7 @@ See CONTEXT.md §4 for the full diagram and §7 for the API reference.
 
 | Package | Version | Used for | Where | Notes |
 |---|---|---|---|---|
-| `next` | 16.4.2 | App Router, Route Handlers, builds | everywhere | Dynamic route `params` is a Promise; `cookies()` is async |
+| `next` | 16.4.6 | App Router, Route Handlers, builds | everywhere | Dynamic route `params` is a Promise; `cookies()` is async |
 | `react`, `react-dom` | 19.2.6 | UI | pages | |
 | `typescript` | 5.9.3 | Strict typing | everywhere | `@/*` → `src/*` |
 | `tailwindcss`, `@tailwindcss/postcss` | 4.1.17 | Styling | `globals.css`, all JSX | v4: theme tokens live in CSS (`@theme`); there is no `tailwind.config.js` |
@@ -66,7 +66,7 @@ See CONTEXT.md §4 for the full diagram and §7 for the API reference.
 | `bcryptjs` | ^3.0.3 | Password hashing | `src/lib/password.ts` | Cost factor 10 |
 | `vitest` | ^5.1.0 | Unit tests | `tests/` | Run with `npm test` |
 | `jszip` | ^3.10.2 | Builds DOCX test fixtures | tests only | |
-| `eslint`, `eslint-config-next` | 9.39.4 / 16.4.2 | Linting | `eslint.config.mjs` | `next/core-web-vitals` rules |
+| `eslint`, `eslint-config-next` | 9.39.4 / 16.4.6 | Linting | `eslint.config.mjs` | `next/core-web-vitals` rules |
 
 Runtime: **Node.js 22** (developed and tested on v22.23.4) and **PostgreSQL 15** (tested on 15.19). The optional LLM is any OpenAI-compatible Chat Completions API (default model `gpt-4o-mini`).
 

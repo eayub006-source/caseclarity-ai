@@ -79,7 +79,7 @@
 
 | Layer | Technology | Version (package.json) | Used for |
 |---|---|---|---|
-| Framework | Next.js (App Router; Turbopack builds) | 16.4.2 | Pages and the Route Handler backend |
+| Framework | Next.js (App Router; Turbopack builds) | 16.4.6 | Pages and the Route Handler backend |
 | UI library | React / React DOM | 19.2.6 | Client components |
 | Language | TypeScript (strict mode) | 5.9.3 | Entire codebase |
 | Styling | Tailwind CSS v4 + `@tailwindcss/postcss` | 4.1.17 | Utility-first styling |
@@ -93,7 +93,7 @@
 | Password hashing | bcryptjs | ^3.0.3 | bcrypt, cost factor 10 |
 | Tests | vitest | ^5.1.0 | Unit tests |
 | Test fixtures | jszip | ^3.10.2 | Builds DOCX files inside tests only |
-| Linting | ESLint + eslint-config-next | 9.39.4 / 16.4.2 | `next/core-web-vitals` rules |
+| Linting | ESLint + eslint-config-next | 9.39.4 / 16.4.6 | `next/core-web-vitals` rules |
 | LLM (optional) | Any OpenAI-compatible Chat Completions API | default model `gpt-4o-mini` | `/api/analyze` |
 | Other | dotenv | 17.3.1 | Present from the starter template; not imported by application code (Next.js loads `.env` itself) |
 
