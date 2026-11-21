@@ -182,6 +182,34 @@ describe("postChatCompletion (provider call)", () => {
     expect(body.messages).toEqual(messages);
   });
 
+  it("sends the lowest supported reasoning effort so long reasoning cannot exhaust the timeout", async () => {
+    let seen: { init: RequestInit } | null = null;
+    const fetchImpl = (async (_url: string | URL, init: RequestInit) => {
+      seen = { init };
+      return new Response(JSON.stringify(okBody), { status: 200, headers: { "Content-Type": "application/json" } });
+    }) as unknown as typeof fetch;
+
+    await postChatCompletion(cfg, messages, fetchImpl);
+    const body = JSON.parse(seen!.init.body as string);
+    // gemini-3.8-flash supports low/medium/high and defaults to medium;
+    // "minimal" is rejected (HTTP 400), so "low" is the lowest valid level.
+    expect(body.reasoning_effort).toBe("low");
+  });
+
+  it("never sends a thinking_config alongside reasoning_effort (they conflict)", async () => {
+    let seen: { init: RequestInit } | null = null;
+    const fetchImpl = (async (_url: string | URL, init: RequestInit) => {
+      seen = { init };
+      return new Response(JSON.stringify(okBody), { status: 200, headers: { "Content-Type": "application/json" } });
+    }) as unknown as typeof fetch;
+
+    await postChatCompletion(cfg, messages, fetchImpl);
+    const body = JSON.parse(seen!.init.body as string);
+    expect(body).not.toHaveProperty("thinking_config");
+    expect(body).not.toHaveProperty("thinking_level");
+    expect(body).not.toHaveProperty("thinking_budget");
+  });
+
   it("throws LlmError with the status on an HTTP error", async () => {
     const fetchImpl = (async () => new Response("rate limited", { status: 429 })) as unknown as typeof fetch;
     await expect(postChatCompletion(cfg, messages, fetchImpl)).rejects.toMatchObject({ name: "LlmError", status: 429 });

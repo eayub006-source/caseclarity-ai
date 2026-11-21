@@ -255,6 +255,13 @@ export async function postChatCompletion(
         model: cfg.model,
         temperature: 0.2,
         response_format: { type: "json_object" },
+        // Cap reasoning depth. Google's OpenAI-compatible endpoint maps
+        // reasoning_effort onto Gemini's thinking_level (gemini-3.8-flash
+        // defaults to medium, which can exceed our 90 s budget on a strict
+        // structured-extraction prompt). Reasoning cannot be turned off on
+        // Gemini 3 models, and "minimal" is unsupported on 3.8 Flash, so
+        // "low" is the lowest level it accepts.
+        reasoning_effort: "low",
         messages,
       }),
     });
