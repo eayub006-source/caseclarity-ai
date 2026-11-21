@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isSameOrigin, llmConfig } from "@/lib/server-config";
+import { allowAnalysis, isSameOrigin, llmConfig } from "@/lib/server-config";
 import { SYSTEM_PROMPT, buildPrompt, validateLlmResult, postChatCompletion, LlmError, type LlmDoc } from "@/lib/llm";
 import { REQUIRED_DOCS } from "@/lib/core";
 import { readJson, str } from "@/lib/validate";
@@ -28,6 +28,14 @@ export async function POST(req: Request) {
   const cfg = llmConfig();
   if (!cfg.enabled) {
     return NextResponse.json({ mode: "demo", reason: "No LLM_API_KEY configured — using the local demo engine." });
+  }
+
+  // Protects the AI budget: at most 10 Live AI analyses per minute per visitor.
+  if (!(await allowAnalysis(req))) {
+    return NextResponse.json(
+      { error: "Too many AI analyses from your connection. Wait a minute and try again." },
+      { status: 429, headers: { "Retry-After": "60" } }
+    );
   }
 
   const body = await readJson(req);

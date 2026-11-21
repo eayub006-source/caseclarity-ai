@@ -72,7 +72,9 @@
 | Google Drive import | 🧪 | Labelled "Simulated"; no OAuth or Drive API |
 | Evaluation page | 🧪 | Illustrative placeholder metrics, labelled; workspace totals are live |
 | Persistence | 🟡 | Per browser (IndexedDB). No shared workspace across devices or people |
-| Per-document summaries, OCR, organizations, password reset | ⛔ | See §17 |
+| AI document summaries | ✅ | Live AI only; saved in the visitor's browser (`summaries` in the workspace) |
+| Live AI rate limit | ✅ | 10 analyses per minute per visitor (Workers rate-limit binding `ANALYZE_LIMIT`) |
+| OCR, organizations, password reset | ⛔ | See §17 |
 
 ---
 
@@ -439,7 +441,8 @@ Earlier known issues KI-1 to KI-16 (completeness, ordering, CSV quoting, hardcod
 **Product and AI quality**
 
 - [ ] OCR for scanned PDFs; legacy `.doc`; real DOCX page boundaries; keeping original files.
-- [ ] Per-document summaries; contradictions as first-class records; content-based document classification.
+- [x] Per-document AI summaries (Live AI), stored privately in each browser.
+- [ ] Contradictions as first-class records; content-based document classification.
 
 **Back end (when a shared, persistent workspace is needed again)**
 

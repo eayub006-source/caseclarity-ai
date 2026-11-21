@@ -118,7 +118,7 @@ New accounts can be created on the sign-up page; they are saved in that browser 
 |---|---|
 | 4 | OCR so scanned PDFs / photos can be read |
 | 5 | Old `.doc` Word files; real page numbers for Word files; keeping the original files |
-| 6 | Per-document summaries; a smarter demo engine |
+| 6 | A smarter demo engine (AI document summaries are done) |
 
 ### 🟡 When a shared workspace is needed
 | # | Task |

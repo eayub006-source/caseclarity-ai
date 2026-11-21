@@ -134,3 +134,24 @@ describe("facts and audit", () => {
     expect(() => W.appendAudit(ws(), null, "  ", "", "case", "A")).toThrow();
   });
 });
+
+describe("AI document summaries (stored in the browser workspace)", () => {
+  const summary = (documentId: string, text = "A short summary.") => ({ documentId, summary: text, highlights: [{ text: "Rent is $1,450", page: 2, verified: true }] });
+
+  it("keeps only documents of the case and replaces earlier summaries", () => {
+    const first = W.replaceSummaries(ws(), "c1", [summary("d1"), summary("d6"), summary("nope")], "llm", NOW);
+    expect(first.summaries?.map((s) => s.documentId)).toEqual(["d1"]); // d6 belongs to c2
+    expect(first.summaries?.[0]).toMatchObject({ caseId: "c1", documentName: "Lease_Agreement_Gonzalez.pdf", engine: "llm" });
+    const second = W.replaceSummaries(first, "c1", [summary("d2", "Newer")], "llm", NOW);
+    expect(second.summaries?.map((s) => s.summary)).toEqual(["Newer"]);
+  });
+
+  it("are removed with their case and survive older saved workspaces without the field", () => {
+    const withSummaries = W.replaceSummaries(ws(), "c1", [summary("d1")]);
+    expect(W.deleteCase(withSummaries, "c1", "A").summaries).toEqual([]);
+    const legacy = { ...ws() } as W.Workspace;
+    delete legacy.summaries;
+    expect(W.loadWorkspace(legacy)).not.toBeNull();
+    expect(W.replaceSummaries(legacy, "c1", [summary("d1")]).summaries).toHaveLength(1);
+  });
+});

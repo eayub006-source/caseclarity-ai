@@ -118,7 +118,7 @@ flowchart LR
 - **Missing-document detection** against a required-document checklist per case type (it recognises synonyms, e.g. `Pay_Stubs.pdf` counts as *Proof of Income*).
 - **Contradiction checks** between comparable values — differing annual incomes, differing rents, and a "position eliminated but later refilled" conflict. Each contradiction shows both sides with its own source document, page and quoted snippet; a conflict that cannot cite two traceable sides is dropped, not guessed.
 - **Live AI** (optional) — structured, cited JSON from Google Gemini (or any OpenAI-compatible model); citations that cannot be found in the documents are marked **Unverified**. Busy models are retried and can fall back to a lighter model, and the audit says which model answered.
-- **AI document summaries** (Live AI) — a short summary and cited highlights for each document, shown on the case's *Documents* tab.
+- **AI document summaries** (Live AI) — a short summary and cited highlights for each document, shown on the case's *Documents* tab and saved privately in the visitor's browser.
 
 ### Explainable recommendations
 Every recommendation displays: the recommendation; why the AI generated it; the supporting evidence; the source document and page for each piece of evidence with the quoted text; a confidence indicator labelled as uncalibrated ("heuristic only"); missing information; uncertainties and possible exceptions; numbered next steps.
@@ -148,7 +148,7 @@ Every recommendation displays: the recommendation; why the AI generated it; the 
 | Accounts and roles | 🟡 Real validation and bcrypt hashing, but stored in the browser — they identify users, they do not protect data |
 | AI analysis in Demo Mode | 🟡 Real, but rule-based heuristics — no LLM involved |
 | AI analysis with an LLM | 🟡 Implemented for Google Gemini (OpenAI-compatible endpoint), verified against a mock provider (12-scenario scripted run) |
-| AI document summaries | 🟡 Real (Live AI only); stored in a shared Cloudflare D1 table — see *Known limitations* |
+| AI document summaries | ✅ Real (Live AI only); saved in each visitor's browser like the rest of the case data |
 | Confidence scores | 🟡 Uncalibrated heuristics — not probabilities |
 | Google Drive import | 🧪 Simulated (labelled in the UI) |
 | Evaluation metrics | 🧪 Illustrative placeholders (labelled in the UI) |
@@ -171,7 +171,7 @@ To try Live AI locally, copy `.env.example` to `.env` and set `LLM_API_KEY` (see
 
 ## Deploying to Cloudflare
 
-The app runs on **Cloudflare Workers** (built with vinext). The Worker serves the pages and four small API routes.
+The app runs on **Cloudflare Workers** (built with vinext). The Worker serves the pages and three small, stateless API routes. There is no database to create.
 
 ### Automatic deploys (how the live site is updated)
 
@@ -189,8 +189,7 @@ The repository is connected to **Cloudflare Workers Builds**: every push to `mai
    | `LLM_TIMEOUT_MS` | `90000` |
 
    A Google key (starting `AIza`) is sent to Google's endpoint automatically even if `LLM_BASE_URL` is empty or still points at OpenAI, so it can never end up at OpenAI by mistake. `LLM_FALLBACK_MODELS` is a plain-text value set in `cloudflare.config.ts`.
-2. **Summaries database** — Storage & Databases → D1 → create a database named exactly `caseclarity-summaries`. The app creates its table on first use.
-3. **Protect your AI budget** — anyone who can open the site can start an analysis, and each analysis may make up to three AI calls (retries). Set a monthly budget on the Gemini key, and add a Cloudflare rate-limiting rule for `/api/analyze` or put the site behind [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/).
+2. **AI budget protection** — built in: the Worker's rate limiter (`ANALYZE_LIMIT` in `cloudflare.config.ts`) allows at most **10 AI analyses per minute per visitor**; extra requests get "Too many AI analyses… wait a minute" and the case falls back to the labelled demo engine. Also set a monthly budget on the Gemini key in Google AI Studio — the rate limit slows abuse, a budget caps the bill.
 
 **Check it works:** open `<your-site>/api/config` — `{"aiMode":"llm","model":"gemini-3.8-flash"}` means the key is set. Then run *AI Analysis* on a case and open its *Audit* tab: "AI analysis completed (LLM)" means Live AI answered. If it fell back to Demo Mode, the audit entry gives the reason (for example "the AI provider rejected the API key").
 
@@ -237,7 +236,6 @@ npm run preview:cloudflare       # http://localhost:4173
 | CSV | PapaParse (RFC 4180) |
 | Accounts | Browser-local, `bcryptjs` password hashing |
 | AI | Google Gemini through its OpenAI-compatible Chat Completions endpoint (any OpenAI-compatible API works), with retries and a fallback model; or the built-in demo engine |
-| Server storage | Cloudflare D1 — AI document summaries only |
 | Hosting | Cloudflare Workers (`nodejs_compat`) |
 | Testing and linting | Vitest, ESLint with `eslint-config-next`, GitHub Actions CI |
 
@@ -257,17 +255,14 @@ flowchart LR
     C["GET /api/config"]
     A["POST /api/analyze"]
     H["GET /api/health"]
-    M["/api/summaries"]
   end
   S --> C
   S -->|"Live AI only"| A
-  S -->|"AI summaries"| M
-  M --> DB[("D1: caseclarity-summaries")]
   A -->|"only if LLM_API_KEY is set"| L["Google Gemini<br/>(OpenAI-compatible)"]
 ```
 
 - **Client:** every page is a React client component. The store (`src/lib/store.tsx`) is the single gateway for data: it applies the workspace rules and saves the result in IndexedDB.
-- **Server:** stateless route handlers, plus `/api/summaries`, which keeps AI document summaries in Cloudflare D1. In Demo Mode the browser calls only `GET /api/config` and `GET /api/summaries`.
+- **Server:** three stateless route handlers. `/api/analyze` is rate-limited per visitor. In Demo Mode the browser only calls `GET /api/config`.
 - **Analysis:** `/api/analyze` calls the LLM when a key is configured and verifies its citations; otherwise the browser runs the demo engine.
 - **Data:** the dataset is [`src/data/demo-data.ts`](./src/data/demo-data.ts); the domain types are in `src/lib/core.ts`.
 
@@ -282,7 +277,7 @@ caseclarity-ai/
 │   │   ├── login/, signup/       # sign-in (one-click demo accounts) and sign-up
 │   │   ├── (app)/                # signed-in workspace: dashboard, cases, cases/[id], upload,
 │   │   │                         #   integrations, evaluation, audit (+ layout with sidebar)
-│   │   └── api/                  # analyze (Live AI), config, health, summaries (D1)
+│   │   └── api/                  # analyze (Live AI, rate-limited), config, health
 │   ├── components/ui.tsx         # shared UI components
 │   └── lib/
 │       ├── store.tsx             # client data store (IndexedDB-backed)
@@ -293,7 +288,6 @@ caseclarity-ai/
 │       ├── extract.ts            # PDF, DOCX and text extraction (browser)
 │       ├── llm.ts                # LLM prompt + citation verification
 │       └── csv.ts                # CSV parsing, mapping and duplicate detection
-├── db/schema.sql                 # D1 table for AI document summaries
 ├── tests/                        # Vitest unit tests + mock AI provider
 ├── cloudflare.config.ts          # Cloudflare Worker configuration
 ├── vite.config.ts                # vinext build for Cloudflare
@@ -350,7 +344,7 @@ npm run build
 npm run build:cloudflare
 ```
 
-The suite contains **107 unit tests** in `tests/` and needs no network or database:
+The suite contains **112 unit tests** in `tests/` and needs no network or database:
 
 | File | What it covers |
 |---|---|
@@ -360,7 +354,7 @@ The suite contains **107 unit tests** in `tests/` and needs no network or databa
 | `tests/analysis.test.ts` | Required-document checklist; demo-engine results on every seeded case; labelled amounts; contradiction rules |
 | `tests/llm.test.ts` | LLM output validation: citations checked against the documents, page correction, unknown documents marked unverified, contradiction sides verified/dropped, insufficient evidence, provider-call failures |
 | `tests/analyze-route.test.ts` | `POST /api/analyze`: demo fallback without a key, 403/400/413, verified and unverified citations, HTTP 500/429, invalid JSON, rejected output, timeout, network failure |
-| `tests/server-config.test.ts` | A Google key is routed to Google even when the address is missing or set to OpenAI; provider error messages never contain key text |
+| `tests/server-config.test.ts` | A Google key is routed to Google even when the address is missing or set to OpenAI; provider error messages never contain key text; the per-visitor AI rate limit |
 | `tests/workflow.test.ts` | The full browser-side workflow through the store rules: analysis → cited facts → pending recommendation → human review → audit trail |
 | `tests/auth.test.ts`, `tests/csv.test.ts`, `tests/misc.test.ts` | bcrypt hashing; CSV parsing and export; roles; estimated pages |
 
@@ -377,14 +371,13 @@ GitHub Actions (`.github/workflows/ci.yml`) runs the full sequence — including
 
 ## API overview
 
-All routes return JSON. Only `/api/summaries` stores anything on the server (AI document summaries, in D1).
+All routes are stateless and return JSON. Nothing is stored on the server.
 
 | Endpoint | Method | Purpose |
 |---|---|---|
 | `/api/health` | GET | Liveness check — `{"ok":true}` |
 | `/api/config` | GET | `{aiMode: "demo" \| "llm", model}` so the UI can label itself honestly |
 | `/api/analyze` | POST | Live AI analysis of a case's document text, with citation verification, retries and a fallback model; answers `mode: "demo"` with a reason when no key is set or the LLM fails. Cross-site requests are blocked |
-| `/api/summaries` | GET, POST | Read and save AI document summaries for a case (Cloudflare D1); `503` when no database is bound |
 
 Details are in [CONTEXT.md](./CONTEXT.md#7-api-reference).
 
@@ -395,7 +388,7 @@ Details are in [CONTEXT.md](./CONTEXT.md#7-api-reference).
 - **Evidence and uncertainty are always visible** — missing information and uncertainties are part of every recommendation; unverifiable LLM citations are flagged.
 - **Honest confidence** — confidence values are labelled as uncalibrated heuristics, not probabilities.
 - **No fake integrations** — simulated features and illustrative metrics are labelled in the interface.
-- **Privacy** — fictional data only; documents are read in the browser and never uploaded; case data stays in the visitor's browser; the LLM key stays on the server; passwords of new accounts are bcrypt-hashed. In Live AI mode a case's document text is sent to the configured LLM provider for the analysis, and the resulting document summaries are stored in Cloudflare D1.
+- **Privacy** — fictional data only; documents are read in the browser and never uploaded; case data stays in the visitor's browser; the LLM key stays on the server; passwords of new accounts are bcrypt-hashed. In Live AI mode a case's document text is sent to the configured LLM provider for the analysis; the summaries it returns are saved only in the visitor's browser.
 
 ## Known limitations
 
@@ -403,8 +396,7 @@ This is a hackathon prototype. The full list is in [CONTEXT.md](./CONTEXT.md#16-
 
 - **Per-browser data** — no shared workspace across people or devices; clearing site data starts again from the demo data.
 - **Accounts are not a security boundary** — they live in the browser and identify users for the audit trail.
-- **Live AI is open to anyone with the link** — protect your AI budget with a spending cap and a rate limit (see *Deploying to Cloudflare*).
-- **Shared AI summaries** — summaries are stored per case ID in D1 with no owner, and the six demo cases have the same IDs for every visitor, so visitors can see and overwrite each other's summaries for those cases. Moving summaries into each browser would fix this.
+- **Live AI is open to anyone with the link** — the built-in limit (10 analyses per minute per visitor) slows abuse but does not stop many visitors at once; keep a spending cap on the Gemini key.
 - **No OCR** — scanned PDFs return no text. Only PDFs have real page numbers; DOCX/TXT/CSV pages are estimated. Original files are not kept.
 - **Simple demo engine** — rule-based; it is not a substitute for the LLM.
 - **Google Drive is simulated.**

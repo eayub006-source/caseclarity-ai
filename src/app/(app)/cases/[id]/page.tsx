@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, FileText, UploadCloud, Sparkles, CheckCircle2, XCircle, Pencil, MessageSquare, Flag, FilePlus, ShieldCheck, AlertTriangle, Clock, History, BrainCircuit, Loader2, Download, Eye, Lock, Trash2 } from "lucide-react";
@@ -508,20 +508,12 @@ export default function CaseDetailPage() {
       )}
     </div>
   );
-} function DocSummary({ caseId, docId }: { caseId: string; docId: string }) {
-  const [item, setItem] = useState<{ summary: string; highlights: { text: string; page: number; verified: boolean }[] } | null>(null);
-  useEffect(() => {
-    let alive = true;
-    fetch(`/api/summaries?caseId=${encodeURIComponent(caseId)}`)
-      .then(r => (r.ok ? r.json() : null))
-      .then(data => {
-        const list = ((data as { summaries?: { documentId: string; summary: string; highlights: { text: string; page: number; verified: boolean }[] }[] } | null)?.summaries) ?? [];
-        const m = list.find(s => s.documentId === docId);
-        if (alive && m) setItem(m);
-      })
-      .catch(() => { });
-    return () => { alive = false; };
-  }, [caseId, docId]);
+}
+
+// AI summary of one document, from this browser's workspace (Live AI only).
+function DocSummary({ caseId, docId }: { caseId: string; docId: string }) {
+  const { summaries } = useStore();
+  const item = summaries.find(s => s.caseId === caseId && s.documentId === docId);
   if (!item) return null;
   return (
     <div className="mt-3 rounded-xl bg-ember-10 p-3 text-xs leading-relaxed text-fg-2">

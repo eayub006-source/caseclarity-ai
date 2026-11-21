@@ -53,6 +53,7 @@ interface Store {
   extractions: Extraction[];
   recs: Recommendation[];
   audit: W.Workspace["audit"];
+  summaries: W.DocSummaryItem[];
   login: (email: string, password: string) => Promise<void>;
   signup: (name: string, email: string, password: string, org: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -279,21 +280,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
     const data = (await res.json().catch(() => ({}))) as { error?: string };
     if (!res.ok) throw new ApiError(data.error || `Request failed (HTTP ${res.status})`, res.status);
-        const out = data as unknown as { mode?: string; result?: { documentSummaries?: unknown[] } };
+    const out = data as unknown as { mode?: string; result?: { documentSummaries?: unknown[] } };
     if (out.mode === "llm" && out.result?.documentSummaries?.length) {
-      // Fire-and-forget: saved to D1 when a database is available, ignored otherwise.
-      void fetch("/api/summaries", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ caseId, summaries: out.result.documentSummaries }),
-      }).catch(() => {});
+      // Saved in this browser with the rest of the workspace — private to the visitor.
+      apply(W.replaceSummaries(wsRef.current, caseId, out.result.documentSummaries, "llm"));
     }
     return data as unknown as AnalyzeResponse;
-  }, [config.aiMode]);
+  }, [apply, config.aiMode]);
 
   const value: Store = {
     user, ready, config, isManager: canManage(user?.role),
-    cases: ws.cases, docs: ws.docs, extractions: ws.extractions, recs: ws.recs, audit: ws.audit,
+    cases: ws.cases, docs: ws.docs, extractions: ws.extractions, recs: ws.recs, audit: ws.audit, summaries: ws.summaries ?? [],
     login, signup, logout, addCase, updateCase, addDoc, addRec, reviewRec,
     log, importCases, resetDemo, deleteCase, extractFile, analyze, replaceCaseExtractions, toast, notify,
   };

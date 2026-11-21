@@ -71,3 +71,33 @@ export function isSameOrigin(req: Request): boolean {
   const site = req.headers.get("sec-fetch-site");
   return !site || site === "same-origin" || site === "none";
 }
+
+/** Cloudflare's Workers rate-limit binding (see ANALYZE_LIMIT in cloudflare.config.ts). */
+export interface RateLimiter { limit(options: { key: string }): Promise<{ success: boolean }> }
+
+async function analyzeLimiter(): Promise<RateLimiter | undefined> {
+  try {
+    // Resolved by the Workers runtime; absent under `next dev` and in tests.
+    const spec = "cloudflare:workers";
+    const mod = (await import(/* @vite-ignore */ spec)) as { env?: { ANALYZE_LIMIT?: RateLimiter } };
+    return mod.env?.ANALYZE_LIMIT;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Per-visitor cap on Live AI requests, keyed by the client IP Cloudflare
+ * reports. Allows the request when no limiter is bound (local development) or
+ * if the limiter itself errors, so an outage never blocks the app.
+ */
+export async function allowAnalysis(req: Request, limiter?: RateLimiter): Promise<boolean> {
+  const l = limiter ?? (await analyzeLimiter());
+  if (!l) return true;
+  const key = req.headers.get("cf-connecting-ip") || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  try {
+    return (await l.limit({ key })).success;
+  } catch {
+    return true;
+  }
+}

@@ -1,12 +1,14 @@
 import { bindings, defineConfig, defineWorker } from "cf/config";
 
 // Cloudflare Workers deployment (built with vinext — see README "Deploying to
-// Cloudflare"). The Worker serves the app and its API routes (analyze,
-// config, health, summaries). Case data, documents and accounts live in each
-// visitor's browser. The one exception is the D1 database bound as DB
-// ("caseclarity-summaries"), which stores only the AI document summaries used
-// by /api/summaries — create it once in the Cloudflare dashboard before
-// deploying, or the deploy fails.
+// Cloudflare"). The Worker serves the app and three stateless API routes
+// (analyze, config, health). Case data, documents, AI summaries and accounts
+// all live in each visitor's browser, so there is no database binding.
+//
+// ANALYZE_LIMIT is Cloudflare's built-in Workers rate limiter. It caps Live AI
+// at 10 analyses per minute per visitor IP, which protects the AI budget even
+// on a workers.dev address (where dashboard WAF rules are not available).
+// The namespace id is any number unique to this account.
 //
 // Live AI (an OpenAI-compatible LLM — Google Gemini in production) is enabled
 // by declaring the LLM_* bindings below as Worker secrets. The values are
@@ -49,7 +51,7 @@ export default defineConfig({
       // was set by hand. The value lives here, and a fallback result is labelled
       // in the audit trail.
       LLM_FALLBACK_MODELS: bindings.text("gemini-3.5-flash-lite"),
-      DB: bindings.d1({ name: "caseclarity-summaries" }),
+      ANALYZE_LIMIT: bindings.rateLimit({ namespace: "1001", simple: { limit: 10, period: 60 } }),
     },
   }),
 });

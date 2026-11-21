@@ -48,3 +48,27 @@ describe("provider error messages", () => {
     expect(describeHttpFailure(503)).toMatch(/unavailable/);
   });
 });
+
+describe("Live AI rate limit", () => {
+  const req = (ip: string) => new Request("https://x.test/api/analyze", { method: "POST", headers: { "cf-connecting-ip": ip } });
+
+  it("allows requests when no limiter is bound (local development)", async () => {
+    const { allowAnalysis } = await import("../src/lib/server-config");
+    expect(await allowAnalysis(req("1.2.3.4"))).toBe(true);
+  });
+
+  it("keys the limit by visitor IP and blocks once it is used up", async () => {
+    const { allowAnalysis } = await import("../src/lib/server-config");
+    const used = new Map<string, number>();
+    const limiter = { async limit({ key }: { key: string }) { const n = (used.get(key) ?? 0) + 1; used.set(key, n); return { success: n <= 2 }; } };
+    expect(await allowAnalysis(req("1.1.1.1"), limiter)).toBe(true);
+    expect(await allowAnalysis(req("1.1.1.1"), limiter)).toBe(true);
+    expect(await allowAnalysis(req("1.1.1.1"), limiter)).toBe(false);
+    expect(await allowAnalysis(req("2.2.2.2"), limiter)).toBe(true); // another visitor is unaffected
+  });
+
+  it("never blocks the app if the limiter itself fails", async () => {
+    const { allowAnalysis } = await import("../src/lib/server-config");
+    expect(await allowAnalysis(req("1.1.1.1"), { limit: async () => { throw new Error("down"); } })).toBe(true);
+  });
+});

@@ -23,6 +23,20 @@ export interface Workspace {
   extractions: Extraction[];  // in creation order
   recs: Recommendation[];     // newest first
   audit: AuditEntry[];        // newest first
+  // AI document summaries (Live AI only). Optional so workspaces saved before
+  // this field existed still load. Kept in the browser like everything else,
+  // so they are private to each visitor.
+  summaries?: DocSummaryItem[];
+}
+
+export interface DocSummaryItem {
+  caseId: string;
+  documentId: string;
+  documentName: string;
+  summary: string;
+  highlights: { text: string; page: number; verified: boolean }[];
+  engine: string;
+  createdAt: string;
 }
 
 /** A user-facing rule violation (e.g. "Title is required"). */
@@ -47,6 +61,7 @@ export function demoWorkspace(): Workspace {
     extractions: seedExtractions(),
     recs: seedRecommendations().sort(newestFirst((r) => r.createdAt)),
     audit: seedAudit().sort(newestFirst((a) => a.timestamp)),
+    summaries: [],
   };
 }
 
@@ -126,6 +141,7 @@ export function deleteCase(ws: Workspace, id: string, actorName: string, now = n
     docs: ws.docs.filter((d) => d.caseId !== id),
     extractions: ws.extractions.filter((e) => e.caseId !== id),
     recs: ws.recs.filter((r) => r.caseId !== id),
+    summaries: (ws.summaries ?? []).filter((x) => x.caseId !== id),
     audit: [entry, ...ws.audit.map((a) => (a.caseId === id ? { ...a, caseId: null } : a))],
   };
 }
@@ -284,4 +300,30 @@ export function appendAudit(ws: Workspace, caseId: string | null, action: string
     timestamp: now,
   };
   return { ws: { ...ws, audit: [item, ...ws.audit] }, item };
+}
+
+// ---------- AI document summaries ----------
+
+/**
+ * Replaces the AI document summaries of one case. Only documents that belong
+ * to the case are kept, and text is length-limited like all workspace input.
+ */
+export function replaceSummaries(ws: Workspace, caseId: string, list: unknown[], engine = "llm", now = new Date().toISOString()): Workspace {
+  const docs = new Map(ws.docs.filter((d) => d.caseId === caseId).map((d) => [d.id, d]));
+  const clean: DocSummaryItem[] = [];
+  for (const raw of list.slice(0, 50)) {
+    if (!raw || typeof raw !== "object") continue;
+    const o = raw as Record<string, unknown>;
+    const doc = typeof o.documentId === "string" ? docs.get(o.documentId) : undefined;
+    const summary = str(o.summary, 1500);
+    if (!doc || !summary) continue;
+    const highlights = (Array.isArray(o.highlights) ? o.highlights : []).slice(0, 8).flatMap((h) => {
+      if (!h || typeof h !== "object") return [];
+      const x = h as Record<string, unknown>;
+      const text = str(x.text, 300);
+      return text ? [{ text, page: int(x.page, 1, 100000) ?? 1, verified: x.verified === true }] : [];
+    });
+    clean.push({ caseId, documentId: doc.id, documentName: doc.name, summary, highlights, engine: str(engine, 20) || "llm", createdAt: now });
+  }
+  return { ...ws, summaries: [...(ws.summaries ?? []).filter((x) => x.caseId !== caseId), ...clean] };
 }
