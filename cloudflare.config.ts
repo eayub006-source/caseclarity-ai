@@ -5,12 +5,19 @@ import { bindings, defineConfig, defineWorker } from "cf/config";
 // routes; all case data lives in each visitor's browser, so there are no
 // KV, D1 or R2 bindings.
 //
-// Optional Live AI (an OpenAI-compatible LLM): uncomment the secret lines
-// below, then set the values — locally in .dev.vars (copy .dev.vars.example),
-// in production as Worker secrets (Cloudflare dashboard → Workers → caseclarity-ai
-// → Settings → Variables and Secrets). Declared secrets are REQUIRED at deploy,
-// which is why they stay commented out in Demo Mode. nodejs_compat exposes
-// them on process.env, where src/lib/server-config.ts reads them.
+// Live AI (an OpenAI-compatible LLM — Google Gemini in production) is enabled
+// by declaring the LLM_* bindings below as Worker secrets. The values are
+// never stored in this file or in the bundle: they are supplied out of band,
+// either in .dev.vars for `npm run preview:cloudflare` (copy .dev.vars.example)
+// or by .github/workflows/deploy-cloudflare.yml, which copies the GitHub
+// repository secrets into the Worker's secret store before deploying.
+//
+// A declared secret is REQUIRED at deploy time — if one is missing the deploy
+// fails instead of silently running without AI. Demo Mode is unaffected: it is
+// the app's built-in fallback whenever the provider call fails (bad key,
+// timeout, rate limit or malformed response) and is labelled as such in the UI.
+// nodejs_compat exposes the secrets on process.env, which is where
+// src/lib/server-config.ts reads them.
 export default defineConfig({
   worker: defineWorker({
     name: "caseclarity-ai",
@@ -24,9 +31,14 @@ export default defineConfig({
     },
     env: {
       ASSETS: bindings.assets(),
-      // LLM_API_KEY: bindings.secret(),
-      // LLM_BASE_URL: bindings.secret(), // only if not using https://api.openai.com/v1
-      // LLM_MODEL: bindings.secret(),    // only to change the default gpt-4o-mini
+      LLM_API_KEY: bindings.secret(),
+      // Gemini OpenAI-compatible endpoint (Bearer auth).
+      LLM_BASE_URL: bindings.secret(),
+      // Verified model ID — see README / CONTEXT.md.
+      LLM_MODEL: bindings.secret(),
+      // Request timeout in ms (5000–300000). Must be declared here: an
+      // undeclared variable silently falls back to the 90 s code default.
+      LLM_TIMEOUT_MS: bindings.secret(),
     },
   }),
 });

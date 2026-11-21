@@ -1,0 +1,104 @@
+name: Deploy to Cloudflare Workers
+
+# Manual deployment only — CaseClarity AI is deployed to the existing
+# `caseclarity-ai` Worker on demand, never automatically on every push.
+#
+# Rollback: re-run this workflow and set "Git ref to deploy" to the last known
+# good commit SHA (or tag). The Worker is updated in place, so no second Worker
+# is ever created.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to deploy (branch, tag or commit SHA). Set a previous commit to roll back."
+        required: false
+        default: ""
+      set-secrets:
+        description: "Write the LLM_* Worker secrets from GitHub secrets before deploying"
+        type: boolean
+        default: true
+      stage-only:
+        description: "Upload a Worker version without shifting traffic (--no-promote)"
+        type: boolean
+        default: false
+
+# Least privilege: the deploy job only needs to read the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-cloudflare
+  cancel-in-progress: false
+
+env:
+  WORKER_NAME: caseclarity-ai
+  # Gemini OpenAI-compatible endpoint (Bearer auth) — see CONTEXT.md.
+  LLM_BASE_URL: https://generativelanguage.googleapis.com/v1beta/openai/
+  LLM_MODEL: gemini-3.8-flash
+  LLM_TIMEOUT_MS: "90000"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref != '' && inputs.ref || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Gate the deploy on the same checks CI runs — a manually dispatched ref
+      # must not be able to publish a broken build.
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run lint
+
+      # Copies the GitHub repository secrets into the existing Worker's secret
+      # store. The values never enter the bundle, the logs or this repository.
+      - name: Set Worker secrets
+        if: inputs.set-secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${LLM_API_KEY:-}" ]; then
+            echo "::error::LLM_API_KEY is empty — refusing to deploy Live AI without credentials."
+            exit 1
+          fi
+          payload="$(mktemp)"
+          chmod 600 "$payload"
+          trap 'rm -f "$payload"' EXIT
+          jq -nc \
+            --arg key "$LLM_API_KEY" \
+            --arg url "$LLM_BASE_URL" \
+            --arg model "$LLM_MODEL" \
+            --arg timeout "$LLM_TIMEOUT_MS" \
+            '{LLM_API_KEY:     {name: "LLM_API_KEY",     text: $key,    type: "secret_text"},
+              LLM_BASE_URL:   {name: "LLM_BASE_URL",   text: $url,    type: "secret_text"},
+              LLM_MODEL:      {name: "LLM_MODEL",      text: $model,  type: "secret_text"},
+              LLM_TIMEOUT_MS: {name: "LLM_TIMEOUT_MS", text: $timeout, type: "secret_text"}}' > "$payload"
+          npx --no-install cf workers secrets bulk-edit --worker "$WORKER_NAME" --secrets "@$payload"
+
+      # Updates the existing Worker in place (name comes from
+      # cloudflare.config.ts). Builds with Vite, then promotes to 100% traffic.
+      - name: Deploy the existing Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          STAGE_ONLY: ${{ inputs.stage-only }}
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: |
+          set -euo pipefail
+          if [ "$STAGE_ONLY" = "true" ]; then
+            npm run deploy -- --no-promote
+          else
+            npm run deploy
+          fi

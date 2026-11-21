@@ -7,12 +7,14 @@
 // append-only audit — written as pure functions so they can be unit-tested.
 // Each one returns a NEW workspace; nothing is mutated in place.
 
-import { AuditEntry, CASE_STATUSES, CaseItem, CaseStatus, DocItem, DocStatus, Evidence, Extraction, PRIORITIES, Recommendation, uid } from "./core";
+import { AuditEntry, CASE_STATUSES, CaseItem, CaseStatus, ContradictionItem, DocItem, DocStatus, Evidence, Extraction, PRIORITIES, Recommendation, uid } from "./core";
 import { seedAudit, seedCases, seedDocs, seedExtractions, seedRecommendations } from "@/data/demo-data";
 import { dedupeCases } from "./csv";
 import { int, oneOf, str, strList } from "./validate";
 
-export const WORKSPACE_VERSION = 1;
+// 2: recommendations now carry structured contradictions (with per-side
+// evidence) and an `insufficientEvidence` flag instead of plain strings.
+export const WORKSPACE_VERSION = 2;
 
 export interface Workspace {
   version: number;
@@ -201,6 +203,26 @@ function cleanEvidence(v: unknown): Evidence[] {
   });
 }
 
+/** Contradictions must keep at least two traceable sides; anything less is dropped. */
+function cleanContradictions(v: unknown): ContradictionItem[] {
+  if (!Array.isArray(v)) return [];
+  return v.slice(0, 10).flatMap((c) => {
+    if (!c || typeof c !== "object") return [];
+    const o = c as Record<string, unknown>;
+    const description = str(o.description, 600);
+    const evidence = Array.isArray(o.evidence) ? o.evidence.slice(0, 6).flatMap((e) => {
+      if (!e || typeof e !== "object") return [];
+      const x = e as Record<string, unknown>;
+      const value = str(x.value, 300);
+      const doc = str(x.doc, 255);
+      if (!value || !doc) return [];
+      return [{ value, doc, page: int(x.page, 1, 100000) ?? 1, snippet: str(x.snippet, 600), documentId: str(x.documentId, 100) || null, verified: x.verified !== false }];
+    }) : [];
+    if (!description || evidence.length < 2) return [];
+    return [{ field: str(o.field, 120) || "Unspecified field", description, evidence }];
+  });
+}
+
 /** New recommendations always start as "pending": only a human review can approve, modify or reject them. */
 export function addRecommendation(ws: Workspace, input: Recommendation, now = new Date().toISOString()): { ws: Workspace; item: Recommendation } {
   if (!ws.cases.some((c) => c.id === input.caseId)) throw new WorkspaceError("Case not found");
@@ -213,7 +235,8 @@ export function addRecommendation(ws: Workspace, input: Recommendation, now = ne
     status: "pending",
     engine: oneOf(input.engine, ["demo", "llm"] as const) || "demo",
     evidence: cleanEvidence(input.evidence),
-    contradictions: strList(input.contradictions),
+    contradictions: cleanContradictions(input.contradictions),
+    insufficientEvidence: input.insufficientEvidence === true,
     missingInfo: strList(input.missingInfo),
     uncertainties: strList(input.uncertainties),
     nextSteps: strList(input.nextSteps),

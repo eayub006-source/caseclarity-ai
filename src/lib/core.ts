@@ -20,12 +20,26 @@ export interface Extraction {
   verified?: boolean; // false = cited document/snippet not found in the case file
 }
 export interface Evidence { claim: string; doc: string; page: number; snippet: string; verified?: boolean; }
+
+// A contradiction is only useful if every side can be traced to a source.
+// Each evidence item is one conflicting value with its own document, page and
+// verbatim snippet; a contradiction must carry at least two of them.
+export interface ContradictionEvidence {
+  value: string; doc: string; page: number; snippet: string;
+  documentId: string | null; verified: boolean;
+}
+export interface ContradictionItem {
+  field: string; // the comparable field, e.g. "Annual income" or "Monthly rent"
+  description: string; // what conflicts and why it matters
+  evidence: ContradictionEvidence[]; // two or more independently traceable values
+}
 export type Engine = "seed" | "demo" | "llm";
 export interface Recommendation {
   id: string; caseId: string; title: string; summary: string; reasoning: string;
   confidence: number; status: RecStatus; evidence: Evidence[]; missingInfo: string[];
   uncertainties: string[]; nextSteps: string[]; createdAt: string; reviewedBy?: string; reviewComment?: string; reviewedAt?: string;
-  engine?: Engine; contradictions?: string[];
+  engine?: Engine; contradictions?: ContradictionItem[];
+  insufficientEvidence?: boolean; // the AI could not ground a conclusion in the documents
 }
 export interface AuditEntry {
   id: string; caseId: string | null; actor: string; action: string; details: string;
@@ -147,7 +161,7 @@ const money = (n: number) => "$" + n.toLocaleString("en-US");
 export interface AnalysisResult {
   extractions: Extraction[];
   recommendation: Recommendation;
-  contradictions: string[];
+  contradictions: ContradictionItem[];
   missing: string[];
   completeness: number;
   suggestedStatus: CaseStatus;
@@ -162,20 +176,21 @@ export function suggestStatus(missingCount: number, contradictionCount: number):
 
 export function runAnalysis(c: CaseItem, docs: DocItem[]): AnalysisResult {
   const extractions: Extraction[] = [];
-  const incomes: { annual: number; doc: string }[] = [];
-  const rents: { value: number; doc: string }[] = [];
+  const incomes: { annual: number; ex: Extraction }[] = [];
+  const rents: { value: number; ex: Extraction }[] = [];
   const uncertainties: string[] = [];
-  let fullText = "";
   let nameFound = false;
 
   const snippetAround = (pageText: string, idx: number, len: number) =>
     pageText.slice(Math.max(0, idx - 40), idx + len + 30).replace(/\s+/g, " ").trim();
-  const push = (d: DocItem, page: number, fieldName: string, fieldValue: string, confidence: number, snippet: string, category: string) =>
-    extractions.push({ id: uid(), caseId: c.id, documentId: d.id, fieldName, fieldValue, confidence, sourceDoc: d.name, sourcePage: page, sourceSnippet: snippet, category, verified: true });
+  const push = (d: DocItem, page: number, fieldName: string, fieldValue: string, confidence: number, snippet: string, category: string) => {
+    const ex: Extraction = { id: uid(), caseId: c.id, documentId: d.id, fieldName, fieldValue, confidence, sourceDoc: d.name, sourcePage: page, sourceSnippet: snippet, category, verified: true };
+    extractions.push(ex);
+    return ex;
+  };
 
   for (const d of docs) {
     const pages = (d.extractedText || "").split("\f");
-    fullText += "\n" + pages.join("\n");
     pages.forEach((pageText, pi) => {
       const page = pi + 1;
 
@@ -206,12 +221,12 @@ export function runAnalysis(c: CaseItem, docs: DocItem[]): AnalysisResult {
         let label = amountLabel(pageText.slice(Math.max(0, mm.index - 40), mm.index));
         if (unit && /^(hour|hr)$/i.test(unit)) label = "Hourly Rate";
         const unitShown = unit ? "/" + unit.toLowerCase().replace(/^mo$/, "month").replace(/^yr$/, "year") : "";
-        push(d, page, label, `$${mm[1]}${unitShown}`, label === "Amount" ? 85 : 92, snippetAround(pageText, mm.index, mm[0].length), "financial");
+        const created = push(d, page, label, `$${mm[1]}${unitShown}`, label === "Amount" ? 85 : 92, snippetAround(pageText, mm.index, mm[0].length), "financial");
         if (label === "Income") {
           const annual = annualise(value, unit);
-          if (annual !== null) incomes.push({ annual, doc: d.name });
+          if (annual !== null) incomes.push({ annual, ex: created });
         }
-        if (label === "Rent" && value > 0) rents.push({ value, doc: d.name });
+        if (label === "Rent" && value > 0) rents.push({ value, ex: created });
         mi++;
       }
     });
@@ -221,22 +236,53 @@ export function runAnalysis(c: CaseItem, docs: DocItem[]): AnalysisResult {
     uncertainties.push(`The client name "${c.clientName}" does not appear in any document — confirm these documents belong to this client.`);
   }
 
-  // Contradictions: only compare like with like.
-  const contradictions: string[] = [];
+  // Contradictions: only compare like with like, and every side must be
+  // traceable to its own document, page and snippet.
+  const toEvidence = (ex: Extraction): ContradictionEvidence => ({
+    value: ex.fieldValue, doc: ex.sourceDoc, page: ex.sourcePage,
+    snippet: ex.sourceSnippet, documentId: ex.documentId, verified: true,
+  });
+  const contradictions: ContradictionItem[] = [];
   const annualValues = [...new Set(incomes.map((i) => i.annual))];
   if (annualValues.length >= 2) {
     const lo = Math.min(...annualValues), hi = Math.max(...annualValues);
     if ((hi - lo) / hi > 0.05) {
       const a = incomes.find((i) => i.annual === lo)!, b = incomes.find((i) => i.annual === hi)!;
-      contradictions.push(`Income figures conflict: ${money(lo)}/year (${a.doc}) vs ${money(hi)}/year (${b.doc}). Confirm which figure is current — documents may reflect different dates.`);
+      contradictions.push({
+        field: "Annual income",
+        description: `Income figures conflict: ${money(lo)}/year (${a.ex.sourceDoc}) vs ${money(hi)}/year (${b.ex.sourceDoc}). Confirm which figure is current — documents may reflect different dates.`,
+        evidence: [toEvidence(a.ex), toEvidence(b.ex)],
+      });
     }
   }
   const rentValues = [...new Set(rents.map((r) => r.value))];
   if (rentValues.length >= 2) {
-    contradictions.push(`Different rent amounts appear across documents: ${rents.map((r) => `${money(r.value)} (${r.doc})`).join(", ")}. Confirm the current rent.`);
+    const sides = rentValues.map((v) => rents.find((r) => r.value === v)!.ex);
+    contradictions.push({
+      field: "Monthly rent",
+      description: `Different rent amounts appear across documents: ${sides.map((ex) => `${money(parseFloat(ex.fieldValue.replace(/[^0-9.]/g, "")))} (${ex.sourceDoc})`).join(", ")}. Confirm the current rent.`,
+      evidence: sides.map(toEvidence),
+    });
   }
-  if (/position elimination|position (was |has been )?eliminated/i.test(fullText) && /refilled/i.test(fullText)) {
-    contradictions.push("Termination reason ('position elimination') conflicts with evidence the position was refilled shortly after. Requires human investigation.");
+  // Locates the first page containing the pattern, for timeline contradictions.
+  const findMention = (re: RegExp): ContradictionEvidence | null => {
+    for (const d of docs) {
+      const pages = (d.extractedText || "").split("\f");
+      for (let i = 0; i < pages.length; i++) {
+        const m = re.exec(pages[i]);
+        if (m) return { value: m[0], doc: d.name, page: i + 1, snippet: snippetAround(pages[i], m.index, m[0].length), documentId: d.id, verified: true };
+      }
+    }
+    return null;
+  };
+  const eliminated = findMention(/position (was |has been )?eliminat(?:ed|ion)/i);
+  const refilled = findMention(/refilled/i);
+  if (eliminated && refilled) {
+    contradictions.push({
+      field: "Termination reason",
+      description: "Termination reason ('position elimination') conflicts with evidence the position was refilled shortly after. Requires human investigation.",
+      evidence: [eliminated, refilled],
+    });
   }
 
   const checklist = checkRequiredDocs(c.caseType, docs);
@@ -263,7 +309,7 @@ export function runAnalysis(c: CaseItem, docs: DocItem[]): AnalysisResult {
   } else if (contradictions.length > 0) {
     title = "Recommend: Investigate Contradictions Before Filing";
     summary = "Material inconsistencies were detected across documents. Reconcile them with the client before taking action.";
-    reasoning = contradictions.join(" ") + ` ${extractions.length} facts extracted from ${docs.length} document(s).` + (missing.length ? ` Also missing: ${missing.join(", ")}.` : "");
+    reasoning = contradictions.map((x) => x.description).join(" ") + ` ${extractions.length} facts extracted from ${docs.length} document(s).` + (missing.length ? ` Also missing: ${missing.join(", ")}.` : "");
     confidence = 74;
     nextSteps.push("Review each contradiction with the client and the source documents");
     if (missing.length) nextSteps.push(`Request: ${missing.join(", ")}`);

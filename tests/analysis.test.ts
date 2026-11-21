@@ -53,9 +53,13 @@ describe("demo engine on the seeded cases (re-running gives sensible results)", 
     const r = analyse("CC-2026-003");
     expect(r.recommendation.title).toMatch(/Investigate Contradictions/);
     expect(r.suggestedStatus).toBe("flagged");
-    expect(r.contradictions.some((c) => /62,000.*69,600/.test(c))).toBe(true);
-    expect(r.contradictions.some((c) => /refilled/.test(c))).toBe(true);
+    expect(r.contradictions.some((c) => /62,000.*69,600/.test(c.description))).toBe(true);
+    expect(r.contradictions.some((c) => /refilled/.test(c.description))).toBe(true);
     expect(r.recommendation.contradictions).toEqual(r.contradictions);
+    // Every contradiction carries at least two independently traceable sides.
+    expect(r.contradictions.length).toBeGreaterThan(0);
+    expect(r.contradictions.every((c) => c.evidence.length >= 2)).toBe(true);
+    expect(r.contradictions.every((c) => c.evidence.every((e) => e.verified && e.doc && e.page >= 1 && e.snippet))).toBe(true);
   });
 
   it("CC-2026-006 (2 missing, no conflicts) → obtain remaining documents, never 'complete'", () => {
@@ -87,7 +91,7 @@ describe("demo engine on the seeded cases (re-running gives sensible results)", 
   it("flags a rent mismatch between documents", () => {
     const c = byNumber("CC-2026-001");
     const extra: DocItem = { ...docsFor(c.id)[0], id: "y", name: "Old_Lease.pdf", extractedText: "Monthly rent $1,200." };
-    expect(runAnalysis(c, [...docsFor(c.id), extra]).contradictions.some((x) => /rent/i.test(x))).toBe(true);
+    expect(runAnalysis(c, [...docsFor(c.id), extra]).contradictions.some((x) => /rent/i.test(x.field) || /rent/i.test(x.description))).toBe(true);
   });
 
   it("warns when the client's name is not in any document", () => {

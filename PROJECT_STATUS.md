@@ -49,7 +49,7 @@ New accounts can be created on the sign-up page; they are saved in that browser 
 | File upload + text extraction (PDF, DOCX, TXT, CSV, MD) | ✅ Done — in the browser |
 | Required-documents checklist + completeness % | ✅ Done |
 | AI analysis — demo engine (no API key) | ✅ Done |
-| AI analysis — real LLM (with API key) | 🟡 Built and tested with a fake AI server, also on Cloudflare |
+| AI analysis — real LLM (with API key) | 🟡 Built and verified against a mock provider (12-scenario run); not yet run with a real key |
 | Explainable recommendation (evidence, conflicts, missing info, next steps) | ✅ Done |
 | Human review (approve / modify / reject, locked after decision) | ✅ Done |
 | Audit trail (search, export) | ✅ Done |
@@ -57,7 +57,7 @@ New accounts can be created on the sign-up page; they are saved in that browser 
 | Google Drive import | 🟡 Simulated only |
 | Saving data | 🟡 Per browser — no shared workspace |
 | Cloudflare deployment | ✅ Ready — `npm run deploy` (needs your Cloudflare login) |
-| Automated tests | ✅ 56 unit tests, run on every push (GitHub Actions) |
+| Automated tests | ✅ 85 unit tests, run on every push (GitHub Actions) |
 | Browser walkthrough (desktop + phone) | ✅ Done 21 Nov 2026 on the normal and the Cloudflare build |
 | OCR for scanned PDFs | ❌ Not started |
 | Shared workspace / organizations / password reset | ❌ Not in this build |
@@ -85,7 +85,7 @@ New accounts can be created on the sign-up page; they are saved in that browser 
 
 ### 4.4 AI analysis
 - **Demo engine** (no key): finds names, labelled dates and money amounts, conflicts between similar figures, and missing documents; suggests the next step.
-- **Real AI** (with `LLM_API_KEY`): any OpenAI-compatible API. Every quote the AI gives is checked against the documents; anything it cannot find is marked **"Unverified"**. If it fails, the demo engine takes over and the app says why.
+- **Real AI** (with `LLM_API_KEY`): any OpenAI-compatible API. Every quote the AI gives — facts, evidence and both sides of a contradiction — is checked against the documents; anything it cannot find is marked **"Unverified"**, and a contradiction that cannot cite two traceable sides is dropped. The AI must say when the documents do not support a conclusion. If the call fails, the demo engine takes over and the app says why.
 - Labels are honest everywhere: "Live AI" or "Demo Mode", and each recommendation says which engine made it.
 
 ### 4.5 Human review and audit trail
@@ -110,7 +110,7 @@ New accounts can be created on the sign-up page; they are saved in that browser 
 | # | Task | Why it matters |
 |---|---|---|
 | 1 | **Deploy to Cloudflare:** `npx cf auth login`, then `npm run deploy` | Needs your Cloudflare account — it prints the public link |
-| 2 | **Optional: test the real AI with a real API key** | Only tested with a fake AI server so far. See README → "Deploying to Cloudflare" |
+| 2 | **Optional: test the real AI with a real API key** | Verified against the included mock provider (12 scenarios). Point `.env` at a real provider and re-run `node tests/e2e-live-ai.mjs`. See README → "Deploying to Cloudflare" |
 | 3 | **If you add an API key to the public site, protect it** (Cloudflare Access or a rate limit) | Otherwise anyone with the link can use up the AI credits |
 
 ### 🟠 AI quality

@@ -4,11 +4,14 @@
 
 export function llmConfig() {
   const apiKey = process.env.LLM_API_KEY || "";
+  // Request timeout for the provider call, in milliseconds (5 s – 5 min).
+  const timeoutMs = Math.max(5000, Math.min(300_000, Number(process.env.LLM_TIMEOUT_MS) || 90_000));
   return {
     apiKey,
     enabled: apiKey.length > 0,
     baseUrl: (process.env.LLM_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, ""),
     model: process.env.LLM_MODEL || "gpt-4o-mini",
+    timeoutMs,
   };
 }
 

@@ -115,7 +115,7 @@ flowchart LR
 - **Real text extraction** for PDF (per page), DOCX, TXT, CSV and MD, with a warning when a file contains no extractable text (for example a scanned PDF).
 - **Facts with provenance** — names, labelled dates and labelled amounts (rent, income, arrears…), each tied to the document, page and text it came from.
 - **Missing-document detection** against a required-document checklist per case type (it recognises synonyms, e.g. `Pay_Stubs.pdf` counts as *Proof of Income*).
-- **Contradiction checks** between comparable values — differing annual incomes, differing rents, and a "position eliminated but later refilled" conflict.
+- **Contradiction checks** between comparable values — differing annual incomes, differing rents, and a "position eliminated but later refilled" conflict. Each contradiction shows both sides with its own source document, page and quoted snippet; a conflict that cannot cite two traceable sides is dropped, not guessed.
 - **Live AI** (optional) — structured, cited JSON from an LLM; citations that cannot be found in the documents are marked **Unverified**.
 
 ### Explainable recommendations
@@ -145,7 +145,7 @@ Every recommendation displays: the recommendation; why the AI generated it; the 
 | Data persistence | 🟡 Real, but **per browser** (IndexedDB) — no shared server-side database in this build |
 | Accounts and roles | 🟡 Real validation and bcrypt hashing, but stored in the browser — they identify users, they do not protect data |
 | AI analysis in Demo Mode | 🟡 Real, but rule-based heuristics — no LLM involved |
-| AI analysis with an LLM | 🟡 Implemented and verified against a mock LLM; not yet run with a live provider key |
+| AI analysis with an LLM | 🟡 Implemented and verified against a mock provider (12-scenario scripted run); not yet run with a live provider key |
 | Confidence scores | 🟡 Uncalibrated heuristics — not probabilities |
 | Google Drive import | 🧪 Simulated (labelled in the UI) |
 | Evaluation metrics | 🧪 Illustrative placeholders (labelled in the UI) |
@@ -289,6 +289,7 @@ All settings are optional. Without them the app runs in Demo Mode.
 | `LLM_API_KEY` | *(empty)* | Enables Live AI analysis |
 | `LLM_BASE_URL` | `https://api.openai.com/v1` | Base URL of an OpenAI-compatible API |
 | `LLM_MODEL` | `gpt-4o-mini` | Model name sent to the API |
+| `LLM_TIMEOUT_MS` | `90000` | Provider request timeout in milliseconds (clamped 5000–300000) |
 
 - **`npm run dev`** reads them from `.env` (copy `.env.example`).
 - **Cloudflare** reads them as Worker secrets, and the local Worker preview reads `.dev.vars` — see [Deploying to Cloudflare](#deploying-to-cloudflare).
@@ -319,7 +320,7 @@ npm run build
 npm run build:cloudflare
 ```
 
-The suite contains **56 unit tests** in `tests/` and needs no network or database:
+The suite contains **85 unit tests** in `tests/` and needs no network or database:
 
 | File | What it covers |
 |---|---|
@@ -327,8 +328,19 @@ The suite contains **56 unit tests** in `tests/` and needs no network or databas
 | `tests/accounts.test.ts` | Demo sign-in, wrong passwords, sign-up stores only a bcrypt hash, duplicate and invalid sign-ups |
 | `tests/extraction.test.ts` | Real PDF and DOCX extraction through the browser code path; facts attributed to the correct document and page |
 | `tests/analysis.test.ts` | Required-document checklist; demo-engine results on every seeded case; labelled amounts; contradiction rules |
-| `tests/llm.test.ts` | LLM output validation: citations checked against the documents, page correction, unknown documents marked unverified |
+| `tests/llm.test.ts` | LLM output validation: citations checked against the documents, page correction, unknown documents marked unverified, contradiction sides verified/dropped, insufficient evidence, provider-call failures |
+| `tests/analyze-route.test.ts` | `POST /api/analyze`: demo fallback without a key, 403/400/413, verified and unverified citations, HTTP 500/429, invalid JSON, rejected output, timeout, network failure |
+| `tests/workflow.test.ts` | The full browser-side workflow through the store rules: analysis → cited facts → pending recommendation → human review → audit trail |
 | `tests/auth.test.ts`, `tests/csv.test.ts`, `tests/misc.test.ts` | bcrypt hashing; CSV parsing and export; roles; estimated pages |
+
+**Testing the Live AI path without a real key** — a mock OpenAI-compatible provider and a 12-scenario runner are included:
+
+```bash
+node tests/mock-openai-server.mjs 4010     # mock provider
+cp tests/mock-llm.env.example .env         # point the app at it (gitignored)
+npm run dev                                # another terminal
+node tests/e2e-live-ai.mjs                 # prints PASS/FAIL for 12 scenarios
+```
 
 GitHub Actions (`.github/workflows/ci.yml`) runs the full sequence — including the Cloudflare build — on every push and pull request. UI flows were verified with a scripted browser walkthrough (desktop and mobile) on both `next dev` and the local Cloudflare Worker preview on 21 November 2026; those scripts are not yet part of the repository.
 
@@ -359,7 +371,7 @@ This is a hackathon prototype. The full list is in [CONTEXT.md](./CONTEXT.md#16-
 
 - **Per-browser data** — no shared workspace across people or devices; clearing site data starts again from the demo data.
 - **Accounts are not a security boundary** — they live in the browser and identify users for the audit trail.
-- **Live AI** — checked against a mock LLM only; unauthenticated on a public deployment (protect it).
+- **Live AI** — checked against a mock provider only; unauthenticated on a public deployment (protect it).
 - **No OCR** — scanned PDFs return no text. Only PDFs have real page numbers; DOCX/TXT/CSV pages are estimated. Original files are not kept.
 - **Simple demo engine** — rule-based; it is not a substitute for the LLM.
 - **Google Drive is simulated.**

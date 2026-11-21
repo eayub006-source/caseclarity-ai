@@ -42,11 +42,11 @@
 - **Workflow (working end to end):** upload → text extraction (in the browser) → analysis → explainable recommendation → human review → audit trail.
 - **Data:** there is **no database**. The fictional dataset lives in the repository (`src/data/demo-data.ts`). Each visitor's browser keeps its own copy in IndexedDB, so changes survive reloads, visitors never see each other's changes, and *Reset demo data* restores the original.
 - **Demo accounts:** `demo@caseclarity.ai` (Senior Case Worker) and `caseworker@caseclarity.ai` (Case Worker), password `demo1234`, one click on the sign-in page. Sign-ups are stored in the browser with a bcrypt hash.
-- **AI mode:** Demo Mode (deterministic engine, clearly labelled) unless `LLM_API_KEY` is configured on the server. Live AI has been verified end to end against a mock OpenAI-compatible server, on both `next dev` and the Cloudflare Worker build — not yet with a real provider key.
+- **AI mode:** Demo Mode (deterministic engine, clearly labelled) unless `LLM_API_KEY` is configured on the server. Live AI has been verified end to end against a mock OpenAI-compatible provider (`tests/mock-openai-server.mjs`) with a scripted scenario run (`tests/e2e-live-ai.mjs`) — not yet with a real provider key. Every citation is verified server-side; contradictions must carry two traceable sides and unsupported ones are dropped.
 - **Hosting:** Cloudflare Workers via vinext (Vite-based Next.js). `npm run dev` (Next.js) still works for local development.
 - **The PostgreSQL version** (server-side sessions, bcrypt accounts on the server, persistent shared data) is preserved in git history at commit `34dd6c0`.
 
-**Quality gates at last review (2026-11-21):** 56/56 Vitest tests · `npm run typecheck` ✓ · `npm run lint` ✓ · `npm run build` ✓ · `npm run build:cloudflare` ✓ · scripted browser walkthrough (16 flows, desktop + 390 px mobile) passes on both `next dev` and the local Worker preview with zero console errors · `npm audit --omit=dev` → 0 vulnerabilities.
+**Quality gates at last review (2026-11-21):** 85/85 Vitest tests · `npm run typecheck` ✓ · `npm run lint` ✓ · `npm run build` ✓ · `npm run build:cloudflare` ✓ · 12-scenario Live AI run against the mock provider passes (`tests/e2e-live-ai.mjs`) · scripted browser walkthrough (16 flows, desktop + 390 px mobile) passes on both `next dev` and the local Worker preview with zero console errors · `npm audit --omit=dev` → 0 vulnerabilities.
 
 ---
 
@@ -64,7 +64,7 @@
 | Cases: create, list, search, filter, detail, delete | ✅ | Case numbers `CC-<year>-NNN`; completeness from the required-documents checklist |
 | Document upload with real text extraction | ✅ | PDF (real pages), DOCX, TXT, CSV, MD; 10 MB; extracted **in the browser** — files are never uploaded |
 | Analysis — demo engine | 🟡 | Deterministic heuristics with per-document, per-page attribution |
-| Analysis — Live AI | 🟡 | Server-side, citations verified; tested against a mock LLM only |
+| Analysis — Live AI | 🟡 | Server-side; facts, evidence and contradiction sides verified against the documents; structured contradictions; insufficient-evidence flag; tested against a mock provider only |
 | Explainable recommendations | ✅ | All eight required elements (§9.6) |
 | Human review | ✅ | Approve / modify / reject (locked after approve or reject), comment, request documents, flag |
 | Audit trail | ✅ | Global and per case, search, category filter, CSV export; append-only |
@@ -178,7 +178,7 @@ flowchart LR
         ├── roles.ts            # roles and canManage()
         ├── extract.ts          # PDF/DOCX/TXT/CSV/MD text extraction (browser and Node)
         ├── csv.ts              # CSV parsing, mapping, dedupe, export
-        ├── llm.ts              # prompt builder + LLM output validation (citation checks)
+        ├── llm.ts              # prompt, provider call + output validation (citation checks)
         ├── validate.ts         # input sanitising helpers
         └── server-config.ts    # server only: LLM config, same-origin check
 ```
@@ -199,11 +199,11 @@ The TypeScript types in `src/lib/core.ts` are the schema. A `Workspace` (`src/li
 
 | Field | Type | Order | Notes |
 |---|---|---|---|
-| `version` | number | — | `WORKSPACE_VERSION` (1). A saved workspace with another version is replaced by the demo data |
+| `version` | number | — | `WORKSPACE_VERSION` (2). A saved workspace with another version is replaced by the demo data (v2 = structured contradictions + `insufficientEvidence`) |
 | `cases` | `CaseItem[]` | newest first | id, caseNumber, title, clientName, caseType, status, priority, description, assignedTo, completeness (0–100), createdAt, updatedAt |
 | `docs` | `DocItem[]` | newest first | id, caseId, name, type, size, status, extractedText (pages joined by `\f`), pageCount, source, uploadedAt. Only text is kept, never the file |
 | `extractions` | `Extraction[]` | creation order | One fact with provenance: documentId, sourceDoc, sourcePage, sourceSnippet, confidence, category, `verified` |
-| `recs` | `Recommendation[]` | newest first | title, summary, reasoning, confidence, status, engine (`seed`/`demo`/`llm`), evidence, contradictions, missingInfo, uncertainties, nextSteps, reviewedBy/At, reviewComment |
+| `recs` | `Recommendation[]` | newest first | title, summary, reasoning, confidence, status, engine (`seed`/`demo`/`llm`), evidence, contradictions (structured: field, description, ≥2 evidence sides with value/documentId/page/snippet), missingInfo, uncertainties, nextSteps, `insufficientEvidence`, reviewedBy/At, reviewComment |
 | `audit` | `AuditEntry[]` | newest first | caseId (null for workspace events or deleted cases), actor, action, details, category, timestamp |
 
 **IndexedDB** (database `caseclarity-ai`, store `kv`):
@@ -228,7 +228,7 @@ Three stateless routes under `src/app/api/`. Nothing is stored on the server.
 |---|---|---|
 | `GET /api/health` | — | `{"ok":true}` (liveness only — there is no database) |
 | `GET /api/config` | — | `{"aiMode":"demo"\|"llm","model":string\|null}` — non-secret flags for honest labelling |
-| `POST /api/analyze` | `{case:{title,clientName,caseType}, documents:[{id,name,extractedText}]}` | `{mode:"llm", model, result}` with verified citations, or `{mode:"demo", reason}` (no key, LLM error, invalid JSON, timeout). `403` cross-site, `413` too large (> 600,000 characters of text), `400` no documents |
+| `POST /api/analyze` | `{case:{title,clientName,caseType}, documents:[{id,name,extractedText}]}` | `{mode:"llm", model, result}` with verified citations and structured contradictions, or `{mode:"demo", reason}` (no key, LLM error, invalid JSON, timeout, unusable output). `403` cross-site, `413` too large (> 600,000 characters of text), `400` no documents |
 
 `/api/analyze` rejects cross-site browser requests (Origin / Sec-Fetch-Site check in `isSameOrigin()`). The browser trims each document so the request never exceeds the prompt budget (`MAX_PROMPT_CHARS`, 60,000 characters).
 
@@ -278,17 +278,17 @@ Files over 10 MB are refused. A warning is shown when a PDF has no extractable t
 
 ### 9.3 Live AI — `POST /api/analyze` + `src/lib/llm.ts`
 
-- Calls `${LLM_BASE_URL}/chat/completions` with `LLM_MODEL`, `temperature: 0.2`, `response_format: json_object`, 90 s timeout. The prompt marks `=== DOCUMENT: name ===` and `--- PAGE n ---` boundaries and is capped at 60,000 characters.
-- `validateLlmResult()` checks every fact and evidence item against the text that was sent: unknown documents or quotes that do not appear are marked **Unverified** with low confidence, and wrong page numbers are corrected when the quote is found on another page.
-- Any failure returns `mode: "demo"` with a reason; the UI falls back to the demo engine and says so.
+- Calls `${LLM_BASE_URL}/chat/completions` with `LLM_MODEL`, `temperature: 0.2`, `response_format: json_object` and a configurable timeout (`LLM_TIMEOUT_MS`, default 90 s, clamped 5–300 s). The prompt marks `=== DOCUMENT: name ===` and `--- PAGE n ---` boundaries and is capped at 60,000 characters; the system prompt requires verbatim snippets, at least two cited sides per contradiction, an explicit `sufficientEvidence` flag and forbids stating legal decisions.
+- `validateLlmResult()` verifies every fact, every evidence item and both sides of every contradiction against the text that was sent: unknown documents or quotes that do not appear are marked **Unverified** with confidence capped at 40, and wrong page numbers are corrected when the quote is found on another page. A contradiction with fewer than two verified sides is dropped rather than shown as a supported conflict. `sufficientEvidence: false` caps confidence at 60 and adds an uncertainty.
+- Provider failures (timeout, 401/429/5xx, network), invalid JSON and unusable shapes all return `mode: "demo"` with a reason; the UI falls back to the demo engine and says so. The provider call itself is `postChatCompletion()` in `src/lib/llm.ts` (fetch-based, no SDK).
 
 ### 9.4 Demo engine — `runAnalysis()` in `src/lib/core.ts`
 
-Deterministic, no network. Per page: dates (`Month D, YYYY`, `MM/DD/YYYY`, ISO) labelled by nearby words (deadline, effective date, date of birth…); money amounts labelled by the closest keyword (rent, income, arrears, bill, debt…), annualised when a period is given; the client name taken from the case; at most 6 dates and 6 amounts per page. Contradictions are checked only between comparable values: annual incomes that differ, different rents, and a "position eliminated" / "refilled" conflict. Missing documents come from the shared checklist (`checkRequiredDocs`). The recommendation is chosen in this order: 3 or more missing → request documents (90); contradictions → investigate (74); some missing → obtain remaining documents (80); otherwise proceed (86). `suggestStatus()` sets `missing_docs`, `flagged` or `awaiting_review`.
+Deterministic, no network. Per page: dates (`Month D, YYYY`, `MM/DD/YYYY`, ISO) labelled by nearby words (deadline, effective date, date of birth…); money amounts labelled by the closest keyword (rent, income, arrears, bill, debt…), annualised when a period is given; the client name taken from the case; at most 6 dates and 6 amounts per page. Contradictions are checked only between comparable values: annual incomes that differ, different rents, and a "position eliminated" / "refilled" conflict. Each is returned as a structured contradiction with one evidence item per side (value, documentId, page, snippet), so both sides stay independently traceable. Missing documents come from the shared checklist (`checkRequiredDocs`). The recommendation is chosen in this order: 3 or more missing → request documents (90); contradictions → investigate (74); some missing → obtain remaining documents (80); otherwise proceed (86). `suggestStatus()` sets `missing_docs`, `flagged` or `awaiting_review`.
 
 ### 9.5 Attribution guarantees
 
-Every fact keeps the real document id, filename, page and supporting snippet; evidence items always carry document, page ≥ 1 and snippet. Covered by `tests/extraction.test.ts` and `tests/analysis.test.ts`.
+Every fact keeps the real document id, filename, page and supporting snippet; evidence items always carry document, page ≥ 1 and snippet; every side of a contradiction carries its own document id, page and snippet. Covered by `tests/extraction.test.ts`, `tests/analysis.test.ts` and `tests/workflow.test.ts`.
 
 ### 9.6 Explainable recommendation display
 
@@ -336,7 +336,7 @@ To change the dataset, edit `src/data/demo-data.ts`; `tests/workspace.test.ts` c
 
 ## 13. Testing & validation
 
-`npm test` — 8 files, 56 tests, no network or database needed:
+`npm test` — 10 files, 85 tests, no network or database needed:
 
 | File | Covers |
 |---|---|
@@ -344,9 +344,20 @@ To change the dataset, edit `src/data/demo-data.ts`; `tests/workspace.test.ts` c
 | `accounts.test.ts` | Demo sign-in (case-insensitive email), wrong passwords, sign-up stores only a bcrypt hash, validation and duplicate emails |
 | `extraction.test.ts` | Real PDF (generated) and DOCX (generated with jszip) extraction through the browser code path; fact attribution to document and page |
 | `analysis.test.ts` | Required-document checklist; engine output on every seeded case; labelled amounts; contradiction rules |
-| `llm.test.ts` | LLM output validation, citation checks, page correction, prompt markers |
+| `llm.test.ts` | LLM output validation, citation checks, page correction, contradiction verification, insufficient evidence, prompt markers, provider-call failures (timeout, HTTP error, network, empty body) |
+| `analyze-route.test.ts` | `POST /api/analyze` end to end: demo fallback without a key, 403/400/413, verified citations, unverified citation marking, HTTP 500/429, invalid JSON, rejected output, timeout, network failure |
+| `workflow.test.ts` | The browser-side workflow through the store rules: analysis → facts with provenance → pending recommendation → human review locking → audit trail; demo-engine fallback |
 | `auth.test.ts` | bcrypt hashing |
 | `csv.test.ts`, `misc.test.ts` | CSV parsing/export details, roles, estimated pagination |
+
+**Scripted Live AI run** (needs a running app and the mock provider):
+
+```bash
+node tests/mock-openai-server.mjs 4010     # mock OpenAI-compatible provider
+cp tests/mock-llm.env.example .env         # point the app at it
+npm run dev                                # terminal 2
+node tests/e2e-live-ai.mjs                 # 12 scenarios, prints PASS/FAIL
+```
 
 **Validation sequence** (CI runs all of it on every push):
 
@@ -369,8 +380,11 @@ npm run build:cloudflare   # Cloudflare Worker (vinext)
 | `LLM_API_KEY` | `.env` (Next.js) / Worker secret / `.dev.vars` (Worker preview) | — | Enables Live AI |
 | `LLM_BASE_URL` | same | `https://api.openai.com/v1` | OpenAI-compatible endpoint |
 | `LLM_MODEL` | same | `gpt-4o-mini` | Model name |
+| `LLM_TIMEOUT_MS` | same | `90000` | Provider request timeout in milliseconds (clamped 5000–300000) |
 
-**Cloudflare** (`cloudflare.config.ts`): Worker `caseclarity-ai`, entrypoint `vinext/server/fetch-handler`, compatibility date 2026-11-20, flag `nodejs_compat` (exposes secrets on `process.env`), static assets binding. To enable Live AI, uncomment the `bindings.secret()` lines — declared secrets are **required** at deploy, so they stay commented in Demo Mode — and set them in the Cloudflare dashboard (Worker → Settings → Variables and Secrets) and, for local preview, in `.dev.vars`.
+Any OpenAI-compatible Chat Completions endpoint works, including Google Gemini's compatibility endpoint (`LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/`, `LLM_MODEL=gemini-3.8-flash`) — it uses the same `Authorization: Bearer` header. Verified against the mock provider; a real Gemini call has not yet been completed from the development sandbox (its egress allowlist blocks `generativelanguage.googleapis.com`).
+
+**Cloudflare** (`cloudflare.config.ts`): Worker `caseclarity-ai`, entrypoint `vinext/server/fetch-handler`, compatibility date 2026-11-20, flag `nodejs_compat` (exposes secrets on `process.env`), static assets binding. To enable Live AI, uncomment the `bindings.secret()` lines — declared secrets are **required** at deploy, so they stay commented in Demo Mode — and set them in the Cloudflare dashboard (Worker → Settings → Variables and Secrets) and, for local preview, in `.dev.vars`. `LLM_TIMEOUT_MS` is deliberately not declared there (a declared secret becomes required at deploy); on Cloudflare the provider call therefore uses the 90 s default. The timeout uses an explicit `AbortController` because `AbortSignal.timeout()` is ignored by the Worker runtime's `fetch`.
 
 | Script | Does |
 |---|---|
@@ -398,7 +412,7 @@ npm run build:cloudflare   # Cloudflare Worker (vinext)
 - **Per-browser data** — no shared workspace; clearing site data, another browser or another device starts from the demo data. Two open tabs each save their own copy; the last change wins.
 - **Accounts are not a security boundary** (§8).
 - **Unprotected Live AI on public deployments** — anyone who can open the site can trigger LLM calls once a key is set. Use Cloudflare Access or a rate-limiting rule.
-- **Live AI not yet tested with a real provider key** (verified only against a mock OpenAI-compatible server).
+- **Live AI not yet tested with a real provider key** (verified against the mock provider in `tests/mock-openai-server.mjs`; the sandbox used for development has no outbound access to any LLM API).
 - **Extraction gaps** — no OCR (scanned PDFs return no text), no legacy `.doc`, DOCX/TXT/CSV page numbers are estimated, original files are not kept.
 - **Demo engine heuristics** are simple (§9.4); re-running analysis on a seeded case can differ from the sample recommendation.
 - **Dataset updates** do not reach visitors who already have a saved workspace until they reset (or `WORKSPACE_VERSION` is bumped).
@@ -415,7 +429,7 @@ Earlier known issues KI-1 to KI-16 (completeness, ordering, CSV quoting, hardcod
 - [x] Merge the fixes into `main`; browser walkthrough (desktop + mobile).
 - [x] Run without a database; deployable to Cloudflare Workers.
 - [ ] Deploy: `npx cf auth login`, then `npm run deploy`, and open the `*.workers.dev` URL.
-- [ ] Optional: enable Live AI and test with a real provider key (§14); protect the deployment if you do.
+- [ ] Optional: enable Live AI with a real provider key (§14) and re-run the 12 scenarios in `tests/e2e-live-ai.mjs` against it; protect the deployment if you do.
 
 **Product and AI quality**
 
@@ -448,3 +462,4 @@ Earlier known issues KI-1 to KI-16 (completeness, ordering, CSV quoting, hardcod
 6. **Known-issues fix pass** — KI-1 to KI-16 (see §16), roles, rate limiting, origin checks, locked reviews, citation verification; 41 tests.
 7. **Release pass** (2026-11-20) — Next.js 16.4.6 (security advisories), browser walkthrough with mobile and timezone fixes, CI; 46 tests. Last PostgreSQL version: `34dd6c0`.
 8. **Demo build for Cloudflare** (2026-11-21) — PostgreSQL removed: the dataset lives in `src/data/demo-data.ts` and each browser keeps its own copy in IndexedDB; workspace rules moved to pure functions (`src/lib/workspace.ts`); browser-local accounts with bcrypt; one-click demo accounts for both roles; text extraction moved into the browser; `/api/analyze` made stateless; Cloudflare Workers deployment via vinext (React 19.3.1, `nodejs_compat`, opt-in secrets); production dependencies audit-clean; 56 tests.
+9. **Live AI reliability pass** (2026-11-21) — contradictions became structured records with one traceable evidence item per side (demo engine, LLM validation and UI); added an explicit insufficient-evidence flag with confidence capping; strengthened the system prompt (verbatim snippets, ≥2 cited sides per contradiction, no legal conclusions); provider call extracted to `postChatCompletion()` with a configurable timeout and explicit 401/429/5xx/network handling; added route-level and workflow tests plus a mock provider (`tests/mock-openai-server.mjs`) and a 12-scenario scripted run (`tests/e2e-live-ai.mjs`); 85 tests.

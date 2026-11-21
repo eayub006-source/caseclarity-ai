@@ -5,12 +5,31 @@ import Link from "next/link";
 import { ArrowLeft, FileText, UploadCloud, Sparkles, CheckCircle2, XCircle, Pencil, MessageSquare, Flag, FilePlus, ShieldCheck, AlertTriangle, Clock, History, BrainCircuit, Loader2, Download, Eye, Lock, Trash2 } from "lucide-react";
 import { useStore, errorMessage } from "@/lib/store";
 import { Card, Badge, StatusBadge, AiModeBanner, EngineBadge, SafetyBanner, EmptyState, Btn, PriorityDot } from "@/components/ui";
-import { runAnalysis, checkRequiredDocs, suggestStatus, fmtDate, fmtTime, fmtSize, uid, Extraction, CaseStatus } from "@/lib/core";
+import { runAnalysis, checkRequiredDocs, suggestStatus, fmtDate, fmtTime, fmtSize, uid, Extraction, CaseStatus, ContradictionItem } from "@/lib/core";
 
 type Tab = "overview" | "documents" | "analysis" | "recommendation" | "review" | "audit";
 
 function UnverifiedBadge() {
   return <span title="The AI cited a document or quote that could not be found in this case file" className="ml-1 inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-extrabold text-rose-700"><AlertTriangle size={10} /> Unverified</span>;
+}
+
+// A contradiction is shown with both (or more) sides, each traced to its own
+// document, page and verbatim snippet.
+function ContradictionCard({ c }: { c: ContradictionItem }) {
+  return (
+    <div className="rounded-xl border border-violet-200 bg-violet-50/60 p-3">
+      <div className="flex items-start gap-2 text-xs font-extrabold text-violet-800"><AlertTriangle size={13} className="mt-0.5 shrink-0" /><span>{c.field}: {c.description}</span></div>
+      <div className="mt-2 grid gap-1.5 sm:grid-cols-2 *:min-w-0">
+        {c.evidence.map((ev, i) => (
+          <div key={i} className={`rounded-lg border p-2 text-[11px] leading-relaxed ${ev.verified === false ? "border-rose-200 bg-rose-50" : "border-slate-200 bg-white"}`}>
+            <div className="font-bold text-slate-800">{ev.value}</div>
+            <div className="mt-0.5 font-semibold text-blue-700">{ev.doc} · p.{ev.page}{ev.verified === false && <UnverifiedBadge />}</div>
+            <div className="mt-0.5 italic text-slate-500">“{ev.snippet}”</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export default function CaseDetailPage() {
@@ -333,7 +352,7 @@ export default function CaseDetailPage() {
                 <Card className="p-5">
                   <h3 className="flex items-center gap-2 text-sm font-extrabold text-violet-700"><AlertTriangle size={15} /> Contradictions Detected ({caseRec?.contradictions?.length ?? 0})</h3>
                   {caseRec?.contradictions?.length ? (
-                    <ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-slate-600">{caseRec.contradictions.map((x, i) => <li key={i} className="flex gap-2"><AlertTriangle size={13} className="mt-0.5 shrink-0 text-violet-500" />{x}</li>)}</ul>
+                    <div className="mt-2 space-y-2.5">{caseRec.contradictions.map((x, i) => <ContradictionCard key={i} c={x} />)}</div>
                   ) : (
                     <p className="mt-2 text-xs text-slate-500">No contradictions detected in the latest analysis. {config.aiMode === "demo" && "The demo engine compares income and rent figures and checks termination timelines."}</p>
                   )}
@@ -369,6 +388,12 @@ export default function CaseDetailPage() {
                     <StatusBadge status={caseRec.status} />
                     <span className="text-[11px] text-slate-300">Generated {fmtTime(caseRec.createdAt)} · Requires human approval</span>
                   </div>
+                  {caseRec.insufficientEvidence && (
+                    <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-300/70 bg-amber-100/90 px-3 py-2 text-xs font-semibold text-amber-900">
+                      <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                      <span>The AI reported that the documents do <b>not</b> sufficiently support a conclusion. Treat this recommendation as incomplete — gather more evidence before relying on it.</span>
+                    </div>
+                  )}
                 </div>
                 <div className="grid gap-5 p-5 sm:p-6 lg:grid-cols-2">
                   <div>
@@ -390,7 +415,7 @@ export default function CaseDetailPage() {
                     {!!caseRec.contradictions?.length && (
                       <>
                         <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-400">Contradictions</h3>
-                        <ul className="mb-5 mt-2 space-y-1.5 text-xs leading-relaxed text-slate-700">{caseRec.contradictions.map((x, i) => <li key={i} className="flex gap-2"><AlertTriangle size={13} className="mt-0.5 shrink-0 text-violet-500" />{x}</li>)}</ul>
+                        <div className="mb-5 mt-2 space-y-2.5">{caseRec.contradictions.map((x, i) => <ContradictionCard key={i} c={x} />)}</div>
                       </>
                     )}
                     <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-400">Missing Information</h3>

@@ -103,10 +103,10 @@ Keep `GET /api/health` public — hosting checks use it.
 
 ### Enabling the real LLM (optional)
 
-- **`npm run dev`:** set `LLM_API_KEY` (and optionally `LLM_BASE_URL`, `LLM_MODEL`) in `.env` (copy `.env.example`) and restart.
+- **`npm run dev`:** set `LLM_API_KEY` (and optionally `LLM_BASE_URL`, `LLM_MODEL`, `LLM_TIMEOUT_MS`) in `.env` (copy `.env.example`) and restart. To try the Live AI path without a real key, use `tests/mock-llm.env.example` with `tests/mock-openai-server.mjs`.
 - **Cloudflare:** uncomment the `bindings.secret()` lines in `cloudflare.config.ts`, set the secrets in the Cloudflare dashboard (or `.dev.vars` for the local preview — copy `.dev.vars.example`), rebuild/redeploy. Declared secrets are required at deploy, so they stay commented out in Demo Mode. `nodejs_compat` exposes them on `process.env`.
 
-The endpoint targets OpenAI-compatible Chat Completions APIs that support `response_format: {type: "json_object"}`. Citations are verified server-side (`src/lib/llm.ts`). Tested against a mock OpenAI-compatible server, not yet with a live key.
+The endpoint targets OpenAI-compatible Chat Completions APIs that support `response_format: {type: "json_object"}`. Citations (facts, evidence and both sides of every contradiction) are verified server-side (`src/lib/llm.ts`). Tested against the mock provider in `tests/mock-openai-server.mjs` with a 12-scenario run (`tests/e2e-live-ai.mjs`), not yet with a live key.
 
 ### Inspecting or clearing the browser data
 
@@ -125,7 +125,7 @@ DevTools → Application → IndexedDB → `caseclarity-ai` → `kv` (keys `work
 | Add a field to a record | the type in `src/lib/core.ts`, the clean-up in `workspace.ts`, the demo data if needed; bump `WORKSPACE_VERSION` if old saved workspaces would break |
 | Change sign-in or sign-up rules | `src/lib/accounts.ts` |
 | Change the analysis heuristics | `runAnalysis()` in `src/lib/core.ts` |
-| Change the LLM prompt or validation | `src/lib/llm.ts`; the provider call is in `src/app/api/analyze/route.ts` |
+| Change the LLM prompt, provider call or validation | `src/lib/llm.ts` (`SYSTEM_PROMPT`, `buildPrompt`, `postChatCompletion`, `validateLlmResult`) |
 | Change document parsing | `src/lib/extract.ts` |
 | Change CSV parsing or import rules | `src/lib/csv.ts` (dedupe is applied in `importCases()` in `workspace.ts`) |
 | Add a server endpoint | `src/app/api/<name>/route.ts` — stateless; read config only through `src/lib/server-config.ts` |
@@ -221,7 +221,7 @@ export async function POST(req: Request) {
 
 **Change the demo engine (`runAnalysis`)** — keep the invariants: split pages on `\f`; every fact has its real `documentId`, filename, page and snippet; every evidence item has `doc`, `page` and `snippet`; the uncertainties keep the "uncalibrated" caveat; recommendations start as `pending`. Update `tests/analysis.test.ts` and `tests/extraction.test.ts`.
 
-**Change the LLM integration** — keep the response contract (`mode: "llm"` with `result`, or `mode: "demo"` with `reason`). If you change the JSON shape, update `validateLlmResult()` and the mapping in `runAI` (`src/app/(app)/cases/[id]/page.tsx`). Keep the key on the server and the safety instructions in the system prompt.
+**Change the LLM integration** — keep the response contract (`mode: "llm"` with `result`, or `mode: "demo"` with `reason`). If you change the JSON shape, update `validateLlmResult()` and the mapping in `runAI` (`src/app/(app)/cases/[id]/page.tsx`). Keep the key on the server and the safety instructions in the system prompt. Contradictions are structured records (`ContradictionItem` in `core.ts`): each needs at least two evidence sides with value/document/page/snippet, and `validateLlmResult()` drops any that cannot show two verified sides. Recommendations can carry `insufficientEvidence` (confidence is capped at 60). Add route-level cases to `tests/analyze-route.test.ts` and validation cases to `tests/llm.test.ts`; use `tests/mock-openai-server.mjs` + `tests/e2e-live-ai.mjs` for the provider path.
 
 **Change document extraction** — keep joining PDF pages with `\f`, the 10 MB limit and the `warning` field. Keep it free of Node-only APIs. Add a test with a generated fixture (`makePdf`, `makeDocx` in `tests/extraction.test.ts`).
 
@@ -257,7 +257,7 @@ export async function POST(req: Request) {
 Run these from the project root before every commit (CI runs the same):
 
 ```bash
-npm test                     # 56 tests — all must pass
+npm test                     # 85 tests — all must pass
 npm run typecheck            # next typegen + tsc --noEmit
 npm run lint                 # ESLint (0 problems)
 npm run build                # Next.js build
