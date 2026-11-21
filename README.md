@@ -12,6 +12,7 @@ A Build for Campus 2026 project by **Team HACKSMITHS**
 ![React](https://img.shields.io/badge/React-19.3-149ECA?logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.1-06B6D4?logo=tailwindcss&logoColor=white)
+![Gemini](https://img.shields.io/badge/Live_AI-Google_Gemini-8E75B2?logo=googlegemini&logoColor=white)
 ![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)
 ![Status](https://img.shields.io/badge/status-hackathon_prototype-orange)
 
@@ -81,7 +82,7 @@ Small legal-aid nonprofits help people facing eviction, benefit denials, employm
 - **One TypeScript codebase on Next.js (App Router).** Every page is a React client component; three small route handlers form the server.
 - **Zero-infrastructure demo build.** No database: the dataset ships with the app and each browser keeps its own copy in IndexedDB. The rules a backend would enforce — validation, case numbering, locked reviews, an append-only audit trail — live in pure, unit-tested functions ([`src/lib/workspace.ts`](./src/lib/workspace.ts)).
 - **Real, page-aware text extraction in the browser.** PDF.js (through `unpdf`) reads PDFs page by page so that facts can cite their page; `mammoth` reads Word (`.docx`) files.
-- **Two analysis modes.** With `LLM_API_KEY` set, the server calls an OpenAI-compatible LLM that must return structured, cited JSON, and every citation is checked against the documents. Otherwise a deterministic, rule-based demo engine runs — and the UI and audit trail say so.
+- **Two analysis modes.** With `LLM_API_KEY` set, the server calls an OpenAI-compatible LLM (Google Gemini in production) that must return structured, cited JSON, and every citation is checked against the documents. Otherwise a deterministic, rule-based demo engine runs — and the UI and audit trail say so.
 - **Runs on Cloudflare Workers** through [vinext](https://github.com/cloudflare/vinext), Cloudflare's Vite-based implementation of Next.js.
 - **Honesty over hype.** Simulated integrations, illustrative metrics and the demo build's limits are labelled as such.
 
@@ -116,7 +117,8 @@ flowchart LR
 - **Facts with provenance** — names, labelled dates and labelled amounts (rent, income, arrears…), each tied to the document, page and text it came from.
 - **Missing-document detection** against a required-document checklist per case type (it recognises synonyms, e.g. `Pay_Stubs.pdf` counts as *Proof of Income*).
 - **Contradiction checks** between comparable values — differing annual incomes, differing rents, and a "position eliminated but later refilled" conflict. Each contradiction shows both sides with its own source document, page and quoted snippet; a conflict that cannot cite two traceable sides is dropped, not guessed.
-- **Live AI** (optional) — structured, cited JSON from an LLM; citations that cannot be found in the documents are marked **Unverified**.
+- **Live AI** (optional) — structured, cited JSON from Google Gemini (or any OpenAI-compatible model); citations that cannot be found in the documents are marked **Unverified**. Busy models are retried and can fall back to a lighter model, and the audit says which model answered.
+- **AI document summaries** (Live AI) — a short summary and cited highlights for each document, shown on the case's *Documents* tab.
 
 ### Explainable recommendations
 Every recommendation displays: the recommendation; why the AI generated it; the supporting evidence; the source document and page for each piece of evidence with the quoted text; a confidence indicator labelled as uncalibrated ("heuristic only"); missing information; uncertainties and possible exceptions; numbered next steps.
@@ -132,7 +134,7 @@ Every recommendation displays: the recommendation; why the AI generated it; the 
 
 ### Platform
 - **Accounts and roles** — one-click demo accounts for a *Senior Case Worker* (can delete cases and reset demo data) and a *Case Worker*, plus sign-up. Accounts are stored in the browser with bcrypt-hashed passwords.
-- **Interface** — responsive navy-and-blue design for desktop, tablet and mobile.
+- **Interface** — a black-and-ember design (inspired by the *Finament* finance case study): black canvas, grey panels and one orange accent scale used only for actions, active states and data. Statuses are shown with orange intensity and outlines rather than traffic-light colours. Geist typeface; responsive from phone to desktop.
 - **Evaluation page** — compares manual and AI-assisted review using **illustrative** (not measured) numbers, with a method for replacing them with real results.
 
 ## What is real and what is simulated
@@ -145,7 +147,8 @@ Every recommendation displays: the recommendation; why the AI generated it; the 
 | Data persistence | 🟡 Real, but **per browser** (IndexedDB) — no shared server-side database in this build |
 | Accounts and roles | 🟡 Real validation and bcrypt hashing, but stored in the browser — they identify users, they do not protect data |
 | AI analysis in Demo Mode | 🟡 Real, but rule-based heuristics — no LLM involved |
-| AI analysis with an LLM | 🟡 Implemented and verified against a mock provider (12-scenario scripted run); not yet run with a live provider key |
+| AI analysis with an LLM | 🟡 Implemented for Google Gemini (OpenAI-compatible endpoint), verified against a mock provider (12-scenario scripted run) |
+| AI document summaries | 🟡 Real (Live AI only); stored in a shared Cloudflare D1 table — see *Known limitations* |
 | Confidence scores | 🟡 Uncalibrated heuristics — not probabilities |
 | Google Drive import | 🧪 Simulated (labelled in the UI) |
 | Evaluation metrics | 🧪 Illustrative placeholders (labelled in the UI) |
@@ -168,30 +171,45 @@ To try Live AI locally, copy `.env.example` to `.env` and set `LLM_API_KEY` (see
 
 ## Deploying to Cloudflare
 
-The app deploys to **Cloudflare Workers** with vinext. The Worker serves the pages and three small API routes; there are no databases or other bindings to create.
+The app runs on **Cloudflare Workers** (built with vinext). The Worker serves the pages and four small API routes.
+
+### Automatic deploys (how the live site is updated)
+
+The repository is connected to **Cloudflare Workers Builds**: every push to `main` is built and deployed to the `caseclarity-ai` Worker automatically. The result appears as a *Workers Builds: caseclarity-ai* check on the commit in GitHub, with a link to the build log in the Cloudflare dashboard.
+
+### One-time setup in Cloudflare
+
+1. **AI secrets** — Workers & Pages → `caseclarity-ai` → Settings → Variables and Secrets. They are declared in `cloudflare.config.ts`, so a deploy fails if one is missing:
+
+   | Secret | Value |
+   |---|---|
+   | `LLM_API_KEY` | Your Google Gemini API key (from Google AI Studio) |
+   | `LLM_BASE_URL` | `https://generativelanguage.googleapis.com/v1beta/openai/` |
+   | `LLM_MODEL` | `gemini-3.8-flash` |
+   | `LLM_TIMEOUT_MS` | `90000` |
+
+   A Google key (starting `AIza`) is sent to Google's endpoint automatically even if `LLM_BASE_URL` is empty or still points at OpenAI, so it can never end up at OpenAI by mistake. `LLM_FALLBACK_MODELS` is a plain-text value set in `cloudflare.config.ts`.
+2. **Summaries database** — Storage & Databases → D1 → create a database named exactly `caseclarity-summaries`. The app creates its table on first use.
+3. **Protect your AI budget** — anyone who can open the site can start an analysis, and each analysis may make up to three AI calls (retries). Set a monthly budget on the Gemini key, and add a Cloudflare rate-limiting rule for `/api/analyze` or put the site behind [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/).
+
+**Check it works:** open `<your-site>/api/config` — `{"aiMode":"llm","model":"gemini-3.8-flash"}` means the key is set. Then run *AI Analysis* on a case and open its *Audit* tab: "AI analysis completed (LLM)" means Live AI answered. If it fell back to Demo Mode, the audit entry gives the reason (for example "the AI provider rejected the API key").
+
+### Manual deploys (optional)
 
 ```bash
-npm install
 npx cf auth login          # once: sign in to your Cloudflare account
-npm run deploy             # builds and deploys the Worker "caseclarity-ai"
+npm run deploy             # build and deploy the Worker "caseclarity-ai"
 ```
 
-The command prints a `https://caseclarity-ai.<your-subdomain>.workers.dev` URL. In CI, set `CLOUDFLARE_API_TOKEN` (an API token with the *Edit Cloudflare Workers* template) and `CLOUDFLARE_ACCOUNT_ID` instead of signing in.
+The GitHub Actions workflow *Deploy to Cloudflare Workers* (`.github/workflows/deploy-cloudflare.yml`) can also deploy and write the AI secrets from GitHub secrets. It needs the repository secrets `CLOUDFLARE_API_TOKEN` (an API token with the *Edit Cloudflare Workers* template), `CLOUDFLARE_ACCOUNT_ID` and `LLM_API_KEY`; without them it fails at the *Set Worker secrets* step. It is not needed while Workers Builds is connected.
 
-Try the production build locally first, in Cloudflare's own runtime (workerd):
+### Local preview in Cloudflare's runtime
 
 ```bash
+cp .dev.vars.example .dev.vars   # fill in the LLM_* values (gitignored)
 npm run build:cloudflare
-npm run preview:cloudflare   # http://localhost:4173
+npm run preview:cloudflare       # http://localhost:4173
 ```
-
-**Optional — Live AI on Cloudflare:**
-
-1. In `cloudflare.config.ts`, uncomment `LLM_API_KEY: bindings.secret()` (and `LLM_BASE_URL` / `LLM_MODEL` if you are not using OpenAI's defaults). Declared secrets are required at deploy time, which is why they are commented out for Demo Mode.
-2. Set the secret values in the Cloudflare dashboard (Workers & Pages → `caseclarity-ai` → Settings → Variables and Secrets). For the local preview, copy `.dev.vars.example` to `.dev.vars` and fill it in.
-3. Redeploy. The UI switches from *Demo Mode* to *Live AI*.
-
-> **Protect a deployment that has an LLM key.** Anyone who can open the site can trigger LLM calls. Put it behind [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/) or add a rate-limiting rule.
 
 ## Demo guide for judges
 
@@ -212,13 +230,14 @@ npm run preview:cloudflare   # http://localhost:4173
 | Layer | Technology |
 |---|---|
 | Framework | Next.js 16.4 (App Router) — and vinext 1.4 + Vite 8 for the Cloudflare build |
-| UI | React 19.3, Tailwind CSS 4.1, lucide-react icons |
+| UI | React 19.3, Tailwind CSS 4.1 (black-and-ember design tokens in `globals.css`), Geist via `next/font`, lucide-react icons |
 | Language | TypeScript 5.9 (strict mode) |
 | Data | Fictional dataset in the repo; IndexedDB in the browser for each visitor's copy |
 | Document parsing | `unpdf` (PDF.js) for PDF, `mammoth` for DOCX — both in the browser |
 | CSV | PapaParse (RFC 4180) |
 | Accounts | Browser-local, `bcryptjs` password hashing |
-| AI | Optional OpenAI-compatible Chat Completions API (default model `gpt-4o-mini`), or the built-in demo engine |
+| AI | Google Gemini through its OpenAI-compatible Chat Completions endpoint (any OpenAI-compatible API works), with retries and a fallback model; or the built-in demo engine |
+| Server storage | Cloudflare D1 — AI document summaries only |
 | Hosting | Cloudflare Workers (`nodejs_compat`) |
 | Testing and linting | Vitest, ESLint with `eslint-config-next`, GitHub Actions CI |
 
@@ -238,14 +257,17 @@ flowchart LR
     C["GET /api/config"]
     A["POST /api/analyze"]
     H["GET /api/health"]
+    M["/api/summaries"]
   end
   S --> C
   S -->|"Live AI only"| A
-  A -->|"only if LLM_API_KEY is set"| L["OpenAI-compatible LLM"]
+  S -->|"AI summaries"| M
+  M --> DB[("D1: caseclarity-summaries")]
+  A -->|"only if LLM_API_KEY is set"| L["Google Gemini<br/>(OpenAI-compatible)"]
 ```
 
 - **Client:** every page is a React client component. The store (`src/lib/store.tsx`) is the single gateway for data: it applies the workspace rules and saves the result in IndexedDB.
-- **Server:** three stateless route handlers. In Demo Mode the browser only calls `GET /api/config`.
+- **Server:** stateless route handlers, plus `/api/summaries`, which keeps AI document summaries in Cloudflare D1. In Demo Mode the browser calls only `GET /api/config` and `GET /api/summaries`.
 - **Analysis:** `/api/analyze` calls the LLM when a key is configured and verifies its citations; otherwise the browser runs the demo engine.
 - **Data:** the dataset is [`src/data/demo-data.ts`](./src/data/demo-data.ts); the domain types are in `src/lib/core.ts`.
 
@@ -260,7 +282,7 @@ caseclarity-ai/
 │   │   ├── login/, signup/       # sign-in (one-click demo accounts) and sign-up
 │   │   ├── (app)/                # signed-in workspace: dashboard, cases, cases/[id], upload,
 │   │   │                         #   integrations, evaluation, audit (+ layout with sidebar)
-│   │   └── api/                  # analyze (Live AI), config, health
+│   │   └── api/                  # analyze (Live AI), config, health, summaries (D1)
 │   ├── components/ui.tsx         # shared UI components
 │   └── lib/
 │       ├── store.tsx             # client data store (IndexedDB-backed)
@@ -271,7 +293,8 @@ caseclarity-ai/
 │       ├── extract.ts            # PDF, DOCX and text extraction (browser)
 │       ├── llm.ts                # LLM prompt + citation verification
 │       └── csv.ts                # CSV parsing, mapping and duplicate detection
-├── tests/                        # Vitest unit tests
+├── db/schema.sql                 # D1 table for AI document summaries
+├── tests/                        # Vitest unit tests + mock AI provider
 ├── cloudflare.config.ts          # Cloudflare Worker configuration
 ├── vite.config.ts                # vinext build for Cloudflare
 ├── .env.example                  # LLM settings for `npm run dev`
@@ -286,15 +309,16 @@ All settings are optional. Without them the app runs in Demo Mode.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `LLM_API_KEY` | *(empty)* | Enables Live AI analysis |
-| `LLM_BASE_URL` | `https://api.openai.com/v1` | Base URL of an OpenAI-compatible API |
-| `LLM_MODEL` | `gpt-4o-mini` | Model name sent to the API |
+| `LLM_API_KEY` | *(empty)* | Enables Live AI analysis (a Google Gemini key in production) |
+| `LLM_BASE_URL` | Google's endpoint for a Google key, otherwise `https://api.openai.com/v1` | Base URL of an OpenAI-compatible API |
+| `LLM_MODEL` | `gemini-3.8-flash` for a Google key, otherwise `gpt-4o-mini` | Model name sent to the API |
 | `LLM_TIMEOUT_MS` | `90000` | Provider request timeout in milliseconds (clamped 5000–300000) |
 | `LLM_FALLBACK_MODELS` | `gemini-3.5-flash-lite` | Comma-separated models tried in order when the primary is unavailable |
 | `LLM_MAX_ATTEMPTS` | `3` | Total provider attempts shared across the model chain (clamped 1–5) |
 | `LLM_RETRY_BASE_DELAY_MS` | `1000` | Base delay for exponential backoff between attempts (clamped 0–30000) |
 
 - **Retries and fallback.** Transient provider faults (HTTP 429, 500, 502, 503, 504) and timeouts are retried with exponential backoff and full jitter, up to `LLM_MAX_ATTEMPTS` attempts in total. If the primary model is still unavailable, each entry in `LLM_FALLBACK_MODELS` is tried in turn. Authentication failures (401/403) are **never** retried and never fall back — the same key is used for every model, so retrying cannot help. If everything fails, the request degrades to the labelled Demo Mode.
+- **Safe error messages.** When the provider refuses a request, the audit shows a plain reason (rejected key, model not found, rate limit, unavailable). The provider's own error text is never copied, because it can echo part of the API key.
 - **Audit provenance.** A result produced by a fallback model is still a genuine LLM result, and the audit entry names the model that answered and says that the primary was unavailable. Demo Mode results are labelled `Demo Mode` and are never presented as Live AI.
 
 - **`npm run dev`** reads them from `.env` (copy `.env.example`).
@@ -326,7 +350,7 @@ npm run build
 npm run build:cloudflare
 ```
 
-The suite contains **85 unit tests** in `tests/` and needs no network or database:
+The suite contains **107 unit tests** in `tests/` and needs no network or database:
 
 | File | What it covers |
 |---|---|
@@ -336,6 +360,7 @@ The suite contains **85 unit tests** in `tests/` and needs no network or databas
 | `tests/analysis.test.ts` | Required-document checklist; demo-engine results on every seeded case; labelled amounts; contradiction rules |
 | `tests/llm.test.ts` | LLM output validation: citations checked against the documents, page correction, unknown documents marked unverified, contradiction sides verified/dropped, insufficient evidence, provider-call failures |
 | `tests/analyze-route.test.ts` | `POST /api/analyze`: demo fallback without a key, 403/400/413, verified and unverified citations, HTTP 500/429, invalid JSON, rejected output, timeout, network failure |
+| `tests/server-config.test.ts` | A Google key is routed to Google even when the address is missing or set to OpenAI; provider error messages never contain key text |
 | `tests/workflow.test.ts` | The full browser-side workflow through the store rules: analysis → cited facts → pending recommendation → human review → audit trail |
 | `tests/auth.test.ts`, `tests/csv.test.ts`, `tests/misc.test.ts` | bcrypt hashing; CSV parsing and export; roles; estimated pages |
 
@@ -348,17 +373,18 @@ npm run dev                                # another terminal
 node tests/e2e-live-ai.mjs                 # prints PASS/FAIL for 12 scenarios
 ```
 
-GitHub Actions (`.github/workflows/ci.yml`) runs the full sequence — including the Cloudflare build — on every push and pull request. UI flows were verified with a scripted browser walkthrough (desktop and mobile) on both `next dev` and the local Cloudflare Worker preview on 21 November 2026; those scripts are not yet part of the repository.
+GitHub Actions (`.github/workflows/ci.yml`) runs the full sequence — including the Cloudflare build — on every push and pull request. UI flows were verified with a scripted browser walkthrough (desktop and mobile) on both `next dev` and the local Cloudflare Worker preview on 21 November 2026, after the redesign; those scripts are not yet part of the repository.
 
 ## API overview
 
-All routes are stateless and return JSON. Nothing is stored on the server.
+All routes return JSON. Only `/api/summaries` stores anything on the server (AI document summaries, in D1).
 
 | Endpoint | Method | Purpose |
 |---|---|---|
 | `/api/health` | GET | Liveness check — `{"ok":true}` |
 | `/api/config` | GET | `{aiMode: "demo" \| "llm", model}` so the UI can label itself honestly |
-| `/api/analyze` | POST | Live AI analysis of a case's document text, with citation verification; answers `mode: "demo"` when no key is set or the LLM fails. Cross-site requests are blocked |
+| `/api/analyze` | POST | Live AI analysis of a case's document text, with citation verification, retries and a fallback model; answers `mode: "demo"` with a reason when no key is set or the LLM fails. Cross-site requests are blocked |
+| `/api/summaries` | GET, POST | Read and save AI document summaries for a case (Cloudflare D1); `503` when no database is bound |
 
 Details are in [CONTEXT.md](./CONTEXT.md#7-api-reference).
 
@@ -369,7 +395,7 @@ Details are in [CONTEXT.md](./CONTEXT.md#7-api-reference).
 - **Evidence and uncertainty are always visible** — missing information and uncertainties are part of every recommendation; unverifiable LLM citations are flagged.
 - **Honest confidence** — confidence values are labelled as uncalibrated heuristics, not probabilities.
 - **No fake integrations** — simulated features and illustrative metrics are labelled in the interface.
-- **Privacy** — fictional data only; documents are read in the browser and never uploaded; case data stays in the visitor's browser; the LLM key stays on the server; passwords of new accounts are bcrypt-hashed. In Live AI mode a case's document text is sent to the configured LLM provider for the analysis.
+- **Privacy** — fictional data only; documents are read in the browser and never uploaded; case data stays in the visitor's browser; the LLM key stays on the server; passwords of new accounts are bcrypt-hashed. In Live AI mode a case's document text is sent to the configured LLM provider for the analysis, and the resulting document summaries are stored in Cloudflare D1.
 
 ## Known limitations
 
@@ -377,7 +403,8 @@ This is a hackathon prototype. The full list is in [CONTEXT.md](./CONTEXT.md#16-
 
 - **Per-browser data** — no shared workspace across people or devices; clearing site data starts again from the demo data.
 - **Accounts are not a security boundary** — they live in the browser and identify users for the audit trail.
-- **Live AI** — checked against a mock provider only; unauthenticated on a public deployment (protect it).
+- **Live AI is open to anyone with the link** — protect your AI budget with a spending cap and a rate limit (see *Deploying to Cloudflare*).
+- **Shared AI summaries** — summaries are stored per case ID in D1 with no owner, and the six demo cases have the same IDs for every visitor, so visitors can see and overwrite each other's summaries for those cases. Moving summaries into each browser would fix this.
 - **No OCR** — scanned PDFs return no text. Only PDFs have real page numbers; DOCX/TXT/CSV pages are estimated. Original files are not kept.
 - **Simple demo engine** — rule-based; it is not a substitute for the LLM.
 - **Google Drive is simulated.**
