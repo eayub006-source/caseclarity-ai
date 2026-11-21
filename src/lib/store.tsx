@@ -279,6 +279,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
     const data = (await res.json().catch(() => ({}))) as { error?: string };
     if (!res.ok) throw new ApiError(data.error || `Request failed (HTTP ${res.status})`, res.status);
+        const out = data as unknown as { mode?: string; result?: { documentSummaries?: unknown[] } };
+    if (out.mode === "llm" && out.result?.documentSummaries?.length) {
+      // Fire-and-forget: saved to D1 when a database is available, ignored otherwise.
+      void fetch("/api/summaries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ caseId, summaries: out.result.documentSummaries }),
+      }).catch(() => {});
+    }
     return data as unknown as AnalyzeResponse;
   }, [config.aiMode]);
 

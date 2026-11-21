@@ -16,10 +16,15 @@ export interface VerifiedContradictionEvidence {
 export interface VerifiedContradiction {
   field: string; description: string; evidence: VerifiedContradictionEvidence[];
 }
+export interface DocSummary {
+  documentId: string | null; documentName: string; summary: string;
+  highlights: { text: string; page: number; snippet: string; verified: boolean }[];
+}
 export interface VerifiedResult {
   facts: VerifiedFact[];
   contradictions: VerifiedContradiction[];
   missing: string[];
+  documentSummaries: DocSummary[];
   recommendation: {
     title: string; summary: string; reasoning: string; confidence: number;
     evidence: VerifiedEvidence[]; missingInfo: string[]; uncertainties: string[]; nextSteps: string[];
@@ -35,6 +40,7 @@ Documents are delimited by "=== DOCUMENT: <filename> ===" and pages by "--- PAGE
   "facts": [{"field": string, "value": string, "confidence": number 0-100, "sourceDoc": string, "sourcePage": number, "snippet": string, "category": "identity"|"date"|"financial"|"fact"}],
   "contradictions": [{"field": string, "description": string, "evidence": [{"value": string, "doc": string, "page": number, "snippet": string}, ...]}],
   "missing": [string],
+  "documentSummaries": [{"doc": string, "summary": string, "highlights": [{"text": string, "page": number, "snippet": string}]}],
   "recommendation": {
     "title": string, "summary": string, "reasoning": string, "confidence": number 0-100,
     "sufficientEvidence": boolean,
@@ -51,6 +57,7 @@ Hard rules:
 - Distinguish facts (quoted from a document) from interpretation (your reasoning). Put interpretation in "reasoning", "uncertainties" and "missingInfo" — never in "facts".
 - If the documents do not support a conclusion, set "sufficientEvidence" to false, keep "confidence" low, and say in the title and summary what is missing. Do not guess a way around gaps.
 - List what information is missing in "missing"/"missingInfo" and what is uncertain in "uncertainties". An empty "uncertainties" is only acceptable when the documents are complete and unambiguous.
+- Give one "documentSummaries" entry per document: a summary of at most 3 sentences and 3 to 5 highlights. Each highlight needs a verbatim "snippet" from that document and its page. Summaries must only state what the document says.
 - Never invent legal rules, statutes, deadlines or case-specific facts. Never state a legal decision, order or conclusion of law: your output is advisory and a human makes every decision.
 - "confidence" is a heuristic score for a human reviewer, not a verified probability.`;
 
@@ -197,8 +204,27 @@ export function validateLlmResult(raw: unknown, docs: LlmDoc[]): VerifiedResult 
     ? num(rec.confidence, 0, 100, 70)
     : Math.min(60, num(rec.confidence, 0, 100, 40));
 
+  const documentSummaries: DocSummary[] = (Array.isArray(r.documentSummaries) ? r.documentSummaries : []).slice(0, 50).flatMap((s) => {
+    if (!s || typeof s !== "object") return [];
+    const o = s as Record<string, unknown>;
+    const doc = findDoc(docs, str(o.doc, 300));
+    const summary = str(o.summary, 1500);
+    if (!doc || !summary) return [];
+    const highlights = (Array.isArray(o.highlights) ? o.highlights : []).slice(0, 8).flatMap((h) => {
+      if (!h || typeof h !== "object") return [];
+      const x = h as Record<string, unknown>;
+      const text = str(x.text, 300);
+      if (!text) return [];
+      const snippet = str(x.snippet, 300);
+      const page = locate(doc, snippet);
+      return [{ text, page: page ?? num(x.page, 1, 10000, 1), snippet, verified: page !== null }];
+    });
+    return [{ documentId: doc.id, documentName: doc.name, summary, highlights }];
+  });
+
   return {
     facts,
+    documentSummaries,
     contradictions,
     missing: strList(r.missing),
     recommendation: {

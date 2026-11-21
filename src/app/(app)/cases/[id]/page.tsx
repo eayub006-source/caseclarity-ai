@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, FileText, UploadCloud, Sparkles, CheckCircle2, XCircle, Pencil, MessageSquare, Flag, FilePlus, ShieldCheck, AlertTriangle, Clock, History, BrainCircuit, Loader2, Download, Eye, Lock, Trash2 } from "lucide-react";
@@ -313,6 +313,7 @@ export default function CaseDetailPage() {
                       <button onClick={() => { const blob = new Blob([(d.extractedText || "").replace(/\f/g, "\n\n--- page break ---\n\n")], { type: "text/plain" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = d.name.replace(/\.[^.]+$/, "") + "_extracted.txt"; a.click(); URL.revokeObjectURL(url); }} title="Download extracted text" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-blue-600"><Download size={15} /></button>
                     </div>
                   </div>
+                  <DocSummary caseId={d.caseId} docId={d.id} />
                   {viewDoc === d.id && <div className="mt-3 max-h-48 overflow-y-auto whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 scrollbar-thin">{d.extractedText ? d.extractedText.replace(/\f/g, "\n\n— page break —\n\n") : "No extractable text."}</div>}
                 </Card>
               ))}
@@ -504,6 +505,34 @@ export default function CaseDetailPage() {
             {caseAudit.length === 0 && <p className="pl-10 text-xs text-slate-400">No audit events yet for this case.</p>}
           </div>
         </Card>
+      )}
+    </div>
+  );
+} function DocSummary({ caseId, docId }: { caseId: string; docId: string }) {
+  const [item, setItem] = useState<{ summary: string; highlights: { text: string; page: number; verified: boolean }[] } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetch(`/api/summaries?caseId=${encodeURIComponent(caseId)}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        const list = ((data as { summaries?: { documentId: string; summary: string; highlights: { text: string; page: number; verified: boolean }[] }[] } | null)?.summaries) ?? [];
+        const m = list.find(s => s.documentId === docId);
+        if (alive && m) setItem(m);
+      })
+      .catch(() => { });
+    return () => { alive = false; };
+  }, [caseId, docId]);
+  if (!item) return null;
+  return (
+    <div className="mt-3 rounded-xl bg-blue-50 p-3 text-xs leading-relaxed text-slate-700">
+      <div className="font-extrabold text-blue-700">AI summary</div>
+      <p className="mt-1">{item.summary}</p>
+      {item.highlights.length > 0 && (
+        <ul className="mt-2 list-disc space-y-1 pl-4">
+          {item.highlights.map((h, i) => (
+            <li key={i}>{h.text} <span className="text-slate-400">(p. {h.page}{h.verified ? "" : ", unverified"})</span></li>
+          ))}
+        </ul>
       )}
     </div>
   );

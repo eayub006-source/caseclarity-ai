@@ -44,6 +44,7 @@ export default defineConfig({
       // unset the code default (gemini-3.5-flash-lite) applies, so a fallback
       // is always available. A fallback result is labelled in the audit trail.
       LLM_FALLBACK_MODELS: bindings.secret(),
+      DB: bindings.d1({ name: "caseclarity-summaries" }),
     },
   }),
 });
