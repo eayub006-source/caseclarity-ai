@@ -39,6 +39,7 @@ export default defineConfig({
       // Request timeout in ms (5000–300000). Must be declared here: an
       // undeclared variable silently falls back to the 90 s code default.
       LLM_TIMEOUT_MS: bindings.secret(),
+      DB: bindings.d1({ name: "caseclarity-summaries" }),
     },
   }),
 });
