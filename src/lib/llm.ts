@@ -267,6 +267,15 @@ export interface LlmCallResult {
 }
 
 /** A provider failure the route can turn into an honest Demo Mode fallback. */
+/** A plain, key-free explanation of a provider HTTP failure, safe to show users. */
+export function describeHttpFailure(status: number): string {
+  if (status === 401 || status === 403) return "the AI provider rejected the API key. Check LLM_API_KEY and LLM_BASE_URL";
+  if (status === 404) return "the AI model or endpoint was not found. Check LLM_MODEL and LLM_BASE_URL";
+  if (status === 429) return "the AI provider's rate limit was reached";
+  if (status >= 500) return "the AI provider is unavailable right now";
+  return "the AI provider refused the request";
+}
+
 export class LlmError extends Error {
   constructor(message: string, readonly status?: number, readonly retryAfterMs?: number) {
     super(message);
@@ -344,8 +353,11 @@ async function postChatCompletionOnce(
     clearTimeout(timer);
   }
   if (!res.ok) {
-    const detail = (await res.text().catch(() => "")).slice(0, 200);
-    throw new LlmError(`LLM request failed (HTTP ${res.status})${detail ? `: ${detail}` : ""}`, res.status, parseRetryAfter(res.headers.get("retry-after")));
+    // The provider's error body is deliberately NOT included: it can echo part
+    // of the API key (e.g. "Incorrect API key provided: AIzaSyAp***SE30"), and
+    // this message ends up in the audit trail that every user can read.
+    await res.body?.cancel().catch(() => {});
+    throw new LlmError(`LLM request failed (HTTP ${res.status}): ${describeHttpFailure(res.status)}`, res.status, parseRetryAfter(res.headers.get("retry-after")));
   }
   const data = (await res.json().catch(() => null)) as { choices?: { message?: { content?: string } }[] } | null;
   const content = data?.choices?.[0]?.message?.content;

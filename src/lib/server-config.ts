@@ -12,11 +12,30 @@ function parseModelList(raw: string): string[] {
   return raw.split(",").map((s) => s.trim()).filter(Boolean);
 }
 
+const OPENAI_BASE_URL = "https://api.openai.com/v1";
+export const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/";
+export const GEMINI_DEFAULT_MODEL = "gemini-3.8-flash";
+
+/** Google API keys start with "AIza"; OpenAI keys never do. */
+export const isGoogleKey = (key: string) => key.startsWith("AIza");
+
 export function llmConfig() {
-  const apiKey = process.env.LLM_API_KEY || "";
+  const apiKey = (process.env.LLM_API_KEY || "").trim();
+  const google = isGoogleKey(apiKey);
   // Request timeout for the provider call, in milliseconds (5 s – 5 min).
   const timeoutMs = Math.max(5000, Math.min(300_000, Number(process.env.LLM_TIMEOUT_MS) || 90_000));
-  const model = process.env.LLM_MODEL || "gpt-4o-mini";
+
+  // A Google key can never work against OpenAI, so when the address is missing
+  // (or still the OpenAI default copied from .env.example) use Google's
+  // OpenAI-compatible endpoint. This is what caused "Incorrect API key provided"
+  // 401s: the Gemini key was being sent to api.openai.com.
+  const rawBaseUrl = (process.env.LLM_BASE_URL || "").trim();
+  const pointsAtOpenAI = !rawBaseUrl || /(^|\/\/)api\.openai\.com/.test(rawBaseUrl);
+  const baseUrl = (google && pointsAtOpenAI ? GEMINI_BASE_URL : rawBaseUrl || OPENAI_BASE_URL).replace(/\/$/, "");
+
+  // Same idea for the model: an OpenAI model name means nothing to Google.
+  const rawModel = (process.env.LLM_MODEL || "").trim();
+  const model = google && (!rawModel || /^(gpt-|o\d|chatgpt)/i.test(rawModel)) ? GEMINI_DEFAULT_MODEL : rawModel || "gpt-4o-mini";
   const fallbackRaw = process.env.LLM_FALLBACK_MODELS;
   const fallbackModels = (fallbackRaw ? parseModelList(fallbackRaw) : DEFAULT_FALLBACK_MODELS).filter((m) => m !== model);
   // Bounded retries: total HTTP attempts shared across the model chain.
@@ -25,7 +44,7 @@ export function llmConfig() {
   return {
     apiKey,
     enabled: apiKey.length > 0,
-    baseUrl: (process.env.LLM_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, ""),
+    baseUrl,
     model,
     fallbackModels,
     timeoutMs,
