@@ -47,7 +47,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const bell = (cls: string) => (
     <Link href="/dashboard" title={`${pendingReviews} recommendation(s) awaiting review`} className={cls}>
       <Bell size={16} />
-      {pendingReviews > 0 && <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-rose-500 px-1 text-[9px] font-semibold text-white">{pendingReviews}</span>}
+      {pendingReviews > 0 && <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[9px] font-semibold text-white">{pendingReviews}</span>}
     </Link>
   );
 
@@ -96,7 +96,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <div className="truncate text-xs font-semibold text-fg">{user.name}</div>
             <div className="truncate text-[11px] text-muted">{user.roleLabel}</div>
           </div>
-          <button onClick={() => { logout(); router.push("/login"); }} title="Sign out" className="rounded-lg p-2 text-muted hover:bg-panel-2 hover:text-rose-400"><LogOut size={16} /></button>
+          <button onClick={() => { logout(); router.push("/login"); }} title="Sign out" className="rounded-lg p-2 text-muted hover:bg-panel-2 hover:text-ember-100"><LogOut size={16} /></button>
         </div>
         {isManager && (
           <button onClick={doReset} disabled={resetting} className="mt-2 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] font-semibold text-muted hover:bg-panel-2 disabled:opacity-50"><RotateCcw size={12} className={resetting ? "animate-spin" : ""} /> {resetting ? "Resetting…" : confirmReset ? "Click again to replace all case data" : "Reset demo data"}</button>
@@ -134,8 +134,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
         <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">{children}</main>
         {toast && (
-          <div role="status" className={`fixed bottom-5 right-5 z-[60] flex max-w-sm items-start gap-2.5 rounded-xl border px-4 py-3 text-sm font-semibold shadow-xl animate-fadeUp ${toast.tone === "warn" ? "border-amber-500/30 bg-amber-500/10 text-amber-200" : "border-emerald-500/30 bg-panel text-fg"}`}>
-            <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${toast.tone === "warn" ? "bg-amber-500" : "bg-emerald-500"}`} />
+          <div role="status" className={`fixed bottom-5 right-5 z-[60] flex max-w-sm items-start gap-2.5 rounded-xl border px-4 py-3 text-sm font-semibold shadow-xl animate-fadeUp ${toast.tone === "warn" ? "border-ember-60 bg-ember-100/5 text-ember-100" : "border-line-strong bg-panel text-fg"}`}>
+            <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${toast.tone === "warn" ? "bg-ember-80" : "bg-ember-40"}`} />
             <span>{toast.msg}</span>
           </div>
         )}

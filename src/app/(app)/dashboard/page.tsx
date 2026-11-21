@@ -21,11 +21,11 @@ export default function Dashboard() {
   ];
 
   const statusCounts = [
-    { label: "Awaiting Review", n: cases.filter(c => c.status === "awaiting_review").length, color: "bg-amber-400" },
+    { label: "Awaiting Review", n: cases.filter(c => c.status === "awaiting_review").length, color: "bg-ember-80" },
     { label: "In Progress", n: cases.filter(c => c.status === "in_progress").length, color: "bg-accent" },
-    { label: "Completed", n: completed, color: "bg-emerald-500" },
-    { label: "Missing Docs", n: missing, color: "bg-rose-500" },
-    { label: "Flagged", n: cases.filter(c => c.status === "flagged").length, color: "bg-violet-500" },
+    { label: "Completed", n: completed, color: "bg-ember-40" },
+    { label: "Missing Docs", n: missing, color: "bg-accent" },
+    { label: "Flagged", n: cases.filter(c => c.status === "flagged").length, color: "bg-ember-60" },
   ];
   const max = Math.max(1, ...statusCounts.map(s => s.n));
 

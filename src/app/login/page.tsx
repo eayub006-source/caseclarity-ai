@@ -55,7 +55,7 @@ export default function LoginPage() {
                 <input value={password} onChange={e => setPassword(e.target.value)} type={show ? "text" : "password"} required className="w-full rounded-xl border border-line-strong bg-panel-2 text-fg placeholder:text-faint py-2.5 pl-10 pr-11 text-sm outline-none focus:border-accent focus:ring-4 focus:ring-ember-20" placeholder="••••••••" />
                 <button type="button" onClick={() => setShow(!show)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-fg-2">{show ? <EyeOff size={16} /> : <Eye size={16} />}</button></div>
             </label>
-            {error && <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-400">{error}</div>}
+            {error && <div className="rounded-xl border border-accent bg-ember-100/10 px-3 py-2 text-xs font-semibold text-ember-100">{error}</div>}
             <button disabled={loading} className="w-full rounded-full bg-accent py-3 text-sm font-medium text-white transition hover:bg-accent-hover disabled:opacity-60">{loading ? "Signing in…" : "Sign in"}</button>
           </form>
           <div className="mt-3 rounded-xl border border-dashed border-ember-40 bg-ember-10 p-3">

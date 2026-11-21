@@ -1,9 +1,12 @@
 import { bindings, defineConfig, defineWorker } from "cf/config";
 
 // Cloudflare Workers deployment (built with vinext — see README "Deploying to
-// Cloudflare"). The Worker only serves the app and three stateless API
-// routes; all case data lives in each visitor's browser, so there are no
-// KV, D1 or R2 bindings.
+// Cloudflare"). The Worker serves the app and its API routes (analyze,
+// config, health, summaries). Case data, documents and accounts live in each
+// visitor's browser. The one exception is the D1 database bound as DB
+// ("caseclarity-summaries"), which stores only the AI document summaries used
+// by /api/summaries — create it once in the Cloudflare dashboard before
+// deploying, or the deploy fails.
 //
 // Live AI (an OpenAI-compatible LLM — Google Gemini in production) is enabled
 // by declaring the LLM_* bindings below as Worker secrets. The values are

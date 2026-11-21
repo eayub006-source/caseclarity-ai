@@ -66,12 +66,12 @@ export default function UploadPage() {
         {queue.length > 0 && (
           <div className="mt-4 space-y-2">
             {queue.map(q => (
-              <div key={q.key} className={`flex flex-wrap items-center gap-3 rounded-xl px-3 py-2.5 text-xs ${q.status === "failed" ? "bg-rose-500/10" : "bg-panel-2"}`}>
-                {q.status === "processing" ? <Loader2 size={15} className="animate-spin text-accent" /> : q.status === "failed" ? <XCircle size={15} className="text-rose-400" /> : <CheckCircle2 size={15} className="text-emerald-400" />}
+              <div key={q.key} className={`flex flex-wrap items-center gap-3 rounded-xl px-3 py-2.5 text-xs ${q.status === "failed" ? "bg-ember-100/10" : "bg-panel-2"}`}>
+                {q.status === "processing" ? <Loader2 size={15} className="animate-spin text-accent" /> : q.status === "failed" ? <XCircle size={15} className="text-ember-100" /> : <CheckCircle2 size={15} className="text-fg-2" />}
                 <span className="font-semibold text-fg-2">{q.name}</span>
                 <span className="text-muted">{fmtSize(q.size)}</span>
                 <span className="ml-auto"><Badge tone={q.status === "processing" ? "blue" : q.status === "failed" ? "red" : "green"}>{q.status}</Badge></span>
-                {q.note && <span className={`w-full text-[11px] ${q.status === "failed" ? "text-rose-400" : "text-amber-300"}`}>{q.note}</span>}
+                {q.note && <span className={`w-full text-[11px] ${q.status === "failed" ? "text-ember-100" : "text-ember-100"}`}>{q.note}</span>}
               </div>
             ))}
           </div>

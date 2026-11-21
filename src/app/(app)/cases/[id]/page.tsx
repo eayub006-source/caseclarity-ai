@@ -4,24 +4,24 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, FileText, UploadCloud, Sparkles, CheckCircle2, XCircle, Pencil, MessageSquare, Flag, FilePlus, ShieldCheck, AlertTriangle, Clock, History, BrainCircuit, Loader2, Download, Eye, Lock, Trash2 } from "lucide-react";
 import { useStore, errorMessage } from "@/lib/store";
-import { Card, Badge, StatusBadge, AiModeBanner, EngineBadge, SafetyBanner, EmptyState, Btn, PriorityDot } from "@/components/ui";
+import { Card, Badge, StatusBadge, StatusLabel, AiModeBanner, EngineBadge, SafetyBanner, EmptyState, Btn, PriorityDot } from "@/components/ui";
 import { runAnalysis, checkRequiredDocs, suggestStatus, fmtDate, fmtTime, fmtSize, uid, Extraction, CaseStatus, ContradictionItem } from "@/lib/core";
 
 type Tab = "overview" | "documents" | "analysis" | "recommendation" | "review" | "audit";
 
 function UnverifiedBadge() {
-  return <span title="The AI cited a document or quote that could not be found in this case file" className="ml-1 inline-flex items-center gap-1 rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-semibold text-rose-400"><AlertTriangle size={10} /> Unverified</span>;
+  return <span title="The AI cited a document or quote that could not be found in this case file" className="ml-1 inline-flex items-center gap-1 rounded-full bg-ember-100/10 px-2 py-0.5 text-[10px] font-semibold text-ember-100"><AlertTriangle size={10} /> Unverified</span>;
 }
 
 // A contradiction is shown with both (or more) sides, each traced to its own
 // document, page and verbatim snippet.
 function ContradictionCard({ c }: { c: ContradictionItem }) {
   return (
-    <div className="rounded-xl border border-violet-500/30 bg-violet-500/10 p-3">
-      <div className="flex items-start gap-2 text-xs font-semibold text-violet-300"><AlertTriangle size={13} className="mt-0.5 shrink-0" /><span>{c.field}: {c.description}</span></div>
+    <div className="rounded-xl border border-ember-70 bg-transparent p-3">
+      <div className="flex items-start gap-2 text-xs font-semibold text-ember-90"><AlertTriangle size={13} className="mt-0.5 shrink-0" /><span>{c.field}: {c.description}</span></div>
       <div className="mt-2 grid gap-1.5 sm:grid-cols-2 *:min-w-0">
         {c.evidence.map((ev, i) => (
-          <div key={i} className={`rounded-lg border p-2 text-[11px] leading-relaxed ${ev.verified === false ? "border-rose-500/30 bg-rose-500/10" : "border-line bg-panel"}`}>
+          <div key={i} className={`rounded-lg border p-2 text-[11px] leading-relaxed ${ev.verified === false ? "border-accent bg-ember-100/10" : "border-line bg-panel"}`}>
             <div className="font-semibold text-fg">{ev.value}</div>
             <div className="mt-0.5 font-semibold text-accent">{ev.doc} · p.{ev.page}{ev.verified === false && <UnverifiedBadge />}</div>
             <div className="mt-0.5 italic text-muted">“{ev.snippet}”</div>
@@ -218,7 +218,7 @@ export default function CaseDetailPage() {
               <div className="text-[11px] font-semibold text-muted">Completeness</div>
               <div className="text-2xl font-semibold text-fg">{completeness}%</div>
             </div>
-            <div className="h-2 w-36 overflow-hidden rounded-full bg-panel-2"><div className={`h-full rounded-full ${completeness >= 80 ? "bg-emerald-500" : completeness >= 50 ? "bg-amber-500" : "bg-rose-500"}`} style={{ width: `${completeness}%` }} /></div>
+            <div className="h-2 w-36 overflow-hidden rounded-full bg-panel-2"><div className={`h-full rounded-full ${completeness >= 80 ? "bg-ember-40" : completeness >= 50 ? "bg-ember-80" : "bg-accent"}`} style={{ width: `${completeness}%` }} /></div>
             <div className="text-[11px] text-muted">Created {fmtDate(c.createdAt)} · Updated {fmtDate(c.updatedAt)}</div>
           </div>
         </div>
@@ -230,7 +230,7 @@ export default function CaseDetailPage() {
           <Btn variant="secondary" onClick={() => fileRef.current?.click()} disabled={uploading > 0}>{uploading > 0 ? <Loader2 size={15} className="animate-spin" /> : <UploadCloud size={15} />} {uploading > 0 ? `Uploading ${uploading}…` : "Upload Documents"}</Btn>
           <Btn variant="secondary" onClick={() => requestDocs("Case worker requested more documents from client")}><FilePlus size={15} /> Request Documents</Btn>
           <Btn variant="ghost" onClick={flag}><Flag size={15} /> Flag for Investigation</Btn>
-          {isManager && <Btn variant="ghost" className="ml-auto text-rose-400 hover:bg-rose-500/10" onClick={removeCase}><Trash2 size={15} /> {confirmDelete ? "Confirm delete" : "Delete case"}</Btn>}
+          {isManager && <Btn variant="ghost" className="ml-auto text-ember-100 hover:bg-ember-100/10" onClick={removeCase}><Trash2 size={15} /> {confirmDelete ? "Confirm delete" : "Delete case"}</Btn>}
           <input ref={fileRef} type="file" multiple accept=".pdf,.docx,.txt,.csv,.md" className="hidden" onChange={e => { if (e.target.files) handleFiles(e.target.files); e.target.value = ""; }} />
         </div>
       </Card>
@@ -240,7 +240,7 @@ export default function CaseDetailPage() {
         {tabs.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)} className={`flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${tab === t.key ? "bg-accent text-white shadow" : "text-muted hover:bg-panel-2"}`}>
             {t.label}
-            {t.badge && <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${tab === t.key ? "bg-white/20" : "bg-amber-500/15 text-amber-300"}`}>{t.badge}</span>}
+            {t.badge && <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${tab === t.key ? "bg-white/20" : "bg-ember-100/5 text-ember-100"}`}>{t.badge}</span>}
           </button>
         ))}
       </div>
@@ -272,7 +272,7 @@ export default function CaseDetailPage() {
             <p className="mt-0.5 text-[11px] text-muted">Matched by document name and content — confirm each item yourself.</p>
             <div className="mt-3 space-y-2">
               {checklist.items.map(item => (
-                <div key={item.name} title={item.matchedDoc ? `Matched: ${item.matchedDoc}` : undefined} className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold ${item.present ? "bg-emerald-500/10 text-emerald-300" : "bg-rose-500/10 text-rose-300"}`}>
+                <div key={item.name} title={item.matchedDoc ? `Matched: ${item.matchedDoc}` : undefined} className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold ${item.present ? "bg-transparent text-fg-2" : "bg-ember-100/10 text-ember-100"}`}>
                   {item.present ? <CheckCircle2 size={15} className="shrink-0" /> : <XCircle size={15} className="shrink-0" />}
                   <span className="min-w-0">{item.name}{item.matchedDoc && <span className="block truncate text-[10px] font-medium opacity-70">{item.matchedDoc}</span>}</span>
                   <span className="ml-auto text-[11px] font-medium">{item.present ? "Present" : "Missing"}</span>
@@ -333,11 +333,11 @@ export default function CaseDetailPage() {
                     <thead><tr className="border-b border-line text-[11px] text-muted"><th className="pb-2 pr-3">Field</th><th className="pb-2 pr-3">Value</th><th className="pb-2 pr-3">Source</th><th className="pb-2 pr-3">Confidence</th><th className="pb-2">Snippet</th></tr></thead>
                     <tbody>
                       {caseEx.map(e => (
-                        <tr key={e.id} className={`border-b border-line align-top ${e.verified === false ? "bg-rose-500/10" : ""}`}>
+                        <tr key={e.id} className={`border-b border-line align-top ${e.verified === false ? "bg-ember-100/10" : ""}`}>
                           <td className="py-2.5 pr-3 font-semibold text-fg-2">{e.fieldName}</td>
                           <td className="py-2.5 pr-3 font-semibold text-fg">{e.fieldValue}</td>
                           <td className="py-2.5 pr-3 text-muted">{e.sourceDoc} · p.{e.sourcePage}{e.verified === false && <UnverifiedBadge />}</td>
-                          <td className="py-2.5 pr-3"><span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${e.confidence >= 90 ? "bg-emerald-500/15 text-emerald-400" : e.confidence >= 60 ? "bg-amber-500/15 text-amber-300" : "bg-rose-500/15 text-rose-400"}`}>{e.confidence}%</span></td>
+                          <td className="py-2.5 pr-3"><span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${e.confidence >= 90 ? "bg-transparent text-fg-2" : e.confidence >= 60 ? "bg-ember-100/5 text-ember-100" : "bg-ember-100/10 text-ember-100"}`}>{e.confidence}%</span></td>
                           <td className="max-w-[220px] py-2.5 text-muted">“{e.sourceSnippet}”</td>
                         </tr>
                       ))}
@@ -347,11 +347,11 @@ export default function CaseDetailPage() {
               </Card>
               <div className="grid gap-4 md:grid-cols-2 *:min-w-0">
                 <Card className="p-5">
-                  <h3 className="flex items-center gap-2 text-sm font-semibold text-rose-400"><AlertTriangle size={15} /> Missing Information ({missing.length})</h3>
-                  {missing.length === 0 ? <p className="mt-2 text-xs text-muted">No required documents missing. All checklist items are present.</p> : <ul className="mt-2 space-y-1.5 text-xs text-fg-2">{missing.map(m => <li key={m} className="flex gap-2"><XCircle size={13} className="mt-0.5 shrink-0 text-rose-500" />{m}</li>)}</ul>}
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-ember-100"><AlertTriangle size={15} /> Missing Information ({missing.length})</h3>
+                  {missing.length === 0 ? <p className="mt-2 text-xs text-muted">No required documents missing. All checklist items are present.</p> : <ul className="mt-2 space-y-1.5 text-xs text-fg-2">{missing.map(m => <li key={m} className="flex gap-2"><XCircle size={13} className="mt-0.5 shrink-0 text-ember-100" />{m}</li>)}</ul>}
                 </Card>
                 <Card className="p-5">
-                  <h3 className="flex items-center gap-2 text-sm font-semibold text-violet-300"><AlertTriangle size={15} /> Contradictions Detected ({caseRec?.contradictions?.length ?? 0})</h3>
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-ember-90"><AlertTriangle size={15} /> Contradictions Detected ({caseRec?.contradictions?.length ?? 0})</h3>
                   {caseRec?.contradictions?.length ? (
                     <div className="mt-2 space-y-2.5">{caseRec.contradictions.map((x, i) => <ContradictionCard key={i} c={x} />)}</div>
                   ) : (
@@ -377,7 +377,7 @@ export default function CaseDetailPage() {
                     <div>
                       <div className="text-[11px] font-semibold text-white/75">AI Recommendation · {caseRec.engine === "llm" ? "Live AI" : caseRec.engine === "seed" ? "Sample data" : "Demo engine"}</div>
                       <h2 className="mt-1 text-lg font-semibold leading-snug sm:text-xl">{caseRec.title}</h2>
-                      <p className="mt-1 max-w-2xl text-sm leading-relaxed text-faint">{caseRec.summary}</p>
+                      <p className="mt-1 max-w-2xl text-sm leading-relaxed text-white/85">{caseRec.summary}</p>
                     </div>
                     <div className="rounded-2xl bg-white/10 px-4 py-3 text-center backdrop-blur">
                       <div className="text-[10px] font-semibold text-white/75">Confidence (uncalibrated)</div>
@@ -386,11 +386,11 @@ export default function CaseDetailPage() {
                     </div>
                   </div>
                   <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <StatusBadge status={caseRec.status} />
-                    <span className="text-[11px] text-faint">Generated {fmtTime(caseRec.createdAt)} · Requires human approval</span>
+                    <span className="rounded-full border border-white/40 bg-black/20 px-2.5 py-0.5 text-[11px] font-medium text-white"><StatusLabel status={caseRec.status} /></span>
+                    <span className="text-[11px] text-white/75">Generated {fmtTime(caseRec.createdAt)} · Requires human approval</span>
                   </div>
                   {caseRec.insufficientEvidence && (
-                    <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-300/70 bg-amber-500/15 px-3 py-2 text-xs font-semibold text-amber-200">
+                    <div className="mt-3 flex items-start gap-2 rounded-xl border border-ember-60 bg-ember-100/5 px-3 py-2 text-xs font-semibold text-ember-100">
                       <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                       <span>The AI reported that the documents do <b>not</b> sufficiently support a conclusion. Treat this recommendation as incomplete — gather more evidence before relying on it.</span>
                     </div>
@@ -403,7 +403,7 @@ export default function CaseDetailPage() {
                     <h3 className="mt-5 text-xs font-semibold text-muted">Supporting Evidence</h3>
                     <div className="mt-2 space-y-2">
                       {caseRec.evidence.map((ev, i) => (
-                        <div key={i} className={`rounded-xl border p-3 ${ev.verified === false ? "border-rose-500/30 bg-rose-500/10" : "border-line bg-panel-2"}`}>
+                        <div key={i} className={`rounded-xl border p-3 ${ev.verified === false ? "border-accent bg-ember-100/10" : "border-line bg-panel-2"}`}>
                           <div className="text-xs font-semibold text-fg">{ev.claim}</div>
                           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-accent"><FileText size={12} /> {ev.doc} · Page {ev.page}{ev.verified === false && <UnverifiedBadge />}</div>
                           <div className="mt-1 text-[11px] italic leading-relaxed text-muted">“{ev.snippet}”</div>
@@ -420,13 +420,13 @@ export default function CaseDetailPage() {
                       </>
                     )}
                     <h3 className="text-xs font-semibold text-muted">Missing Information</h3>
-                    {caseRec.missingInfo.length === 0 ? <p className="mt-2 text-xs text-emerald-400">None — all required items present.</p> : <ul className="mt-2 space-y-1.5 text-xs text-fg-2">{caseRec.missingInfo.map(m => <li key={m} className="flex gap-2"><XCircle size={13} className="mt-0.5 shrink-0 text-rose-500" />{m}</li>)}</ul>}
+                    {caseRec.missingInfo.length === 0 ? <p className="mt-2 text-xs text-fg-2">None — all required items present.</p> : <ul className="mt-2 space-y-1.5 text-xs text-fg-2">{caseRec.missingInfo.map(m => <li key={m} className="flex gap-2"><XCircle size={13} className="mt-0.5 shrink-0 text-ember-100" />{m}</li>)}</ul>}
                     <h3 className="mt-5 text-xs font-semibold text-muted">Uncertainties & Possible Exceptions</h3>
-                    <ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-fg-2">{caseRec.uncertainties.map((u, i) => <li key={i} className="flex gap-2"><Clock size={13} className="mt-0.5 shrink-0 text-amber-500" />{u}</li>)}</ul>
+                    <ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-fg-2">{caseRec.uncertainties.map((u, i) => <li key={i} className="flex gap-2"><Clock size={13} className="mt-0.5 shrink-0 text-ember-100" />{u}</li>)}</ul>
                     <h3 className="mt-5 text-xs font-semibold text-muted">Suggested Next Steps</h3>
                     <ol className="mt-2 space-y-1.5 text-xs text-fg-2">{caseRec.nextSteps.map((s, i) => <li key={i} className="flex gap-2"><span className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-accent text-[9px] font-semibold text-white">{i + 1}</span>{s}</li>)}</ol>
                     {caseRec.reviewedBy && (
-                      <div className="mt-5 rounded-xl bg-emerald-500/10 p-3 text-xs text-emerald-900">
+                      <div className="mt-5 rounded-xl bg-transparent p-3 text-xs text-fg-2">
                         <b>Reviewed by {caseRec.reviewedBy}</b> — {caseRec.reviewComment}
                       </div>
                     )}
@@ -470,7 +470,7 @@ export default function CaseDetailPage() {
               <div className="mt-3 space-y-3">
                 {caseAudit.filter(a => a.category === "review").map(a => (
                   <div key={a.id} className="flex gap-3 rounded-xl bg-panel-2 p-3">
-                    <ShieldCheck size={16} className="mt-0.5 shrink-0 text-emerald-400" />
+                    <ShieldCheck size={16} className="mt-0.5 shrink-0 text-fg-2" />
                     <div><div className="text-xs font-semibold text-fg">{a.action} <span className="font-semibold text-muted">· {a.actor}</span></div><div className="text-xs text-fg-2">{a.details}</div><div className="text-[10px] text-muted">{fmtTime(a.timestamp)}</div></div>
                   </div>
                 ))}
@@ -488,7 +488,7 @@ export default function CaseDetailPage() {
           <div className="relative mt-5 space-y-4 before:absolute before:bottom-2 before:left-[15px] before:top-2 before:w-px before:bg-line">
             {caseAudit.map(a => (
               <div key={a.id} className="relative flex gap-4 pl-1">
-                <div className={`z-10 grid h-8 w-8 shrink-0 place-items-center rounded-full border-2 border-panel text-white ${a.category === "ai" ? "bg-violet-500" : a.category === "document" ? "bg-accent" : a.category === "review" ? "bg-emerald-500" : "bg-faint"}`}>
+                <div className={`z-10 grid h-8 w-8 shrink-0 place-items-center rounded-full border-2 border-panel text-white ${a.category === "ai" ? "bg-ember-60" : a.category === "document" ? "bg-accent" : a.category === "review" ? "bg-ember-40" : "bg-faint"}`}>
                   {a.category === "ai" ? <Sparkles size={13} /> : a.category === "document" ? <FileText size={13} /> : a.category === "review" ? <ShieldCheck size={13} /> : <Clock size={13} />}
                 </div>
                 <div className="min-w-0 flex-1 rounded-xl bg-panel-2 p-3">

@@ -50,7 +50,7 @@ export default function EvaluationPage() {
             <div key={x.t} className="rounded-xl bg-panel-2 p-4"><div className="text-xs font-semibold text-fg">{x.t}</div><div className="mt-1 text-[11px] leading-relaxed text-muted">{x.d}</div></div>
           ))}
         </div>
-        <div className="mt-4 flex items-start gap-2 text-[11px] text-muted"><CheckCircle2 size={13} className="mt-0.5 shrink-0 text-emerald-400" /> Until real testing is done, all metrics on this page must be presented as illustrative demo measurements — never as validated performance claims.</div>
+        <div className="mt-4 flex items-start gap-2 text-[11px] text-muted"><CheckCircle2 size={13} className="mt-0.5 shrink-0 text-fg-2" /> Until real testing is done, all metrics on this page must be presented as illustrative demo measurements — never as validated performance claims.</div>
       </Card>
 
       <Card className="p-5">

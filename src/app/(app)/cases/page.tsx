@@ -80,7 +80,7 @@ export default function CasesPage() {
                 <p className="mt-2 line-clamp-2 flex-1 text-xs leading-relaxed text-muted">{c.description}</p>
                 <div className="mt-3">
                   <div className="flex items-center justify-between text-[11px] font-semibold text-muted"><span>Document completeness</span><span>{c.completeness ?? 0}%</span></div>
-                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-panel-2"><div className={`h-full rounded-full ${(c.completeness ?? 0) >= 80 ? "bg-emerald-500" : (c.completeness ?? 0) >= 50 ? "bg-amber-500" : "bg-rose-500"}`} style={{ width: `${c.completeness ?? 0}%` }} /></div>
+                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-panel-2"><div className={`h-full rounded-full ${(c.completeness ?? 0) >= 80 ? "bg-ember-40" : (c.completeness ?? 0) >= 50 ? "bg-ember-80" : "bg-accent"}`} style={{ width: `${c.completeness ?? 0}%` }} /></div>
                 </div>
                 <div className="mt-4 flex items-center justify-between border-t border-line pt-3">
                   <StatusBadge status={c.status} />

@@ -54,7 +54,7 @@ export default function NewCasePage() {
             </select>
           </Field>
           <Field label="Description"><textarea value={description} onChange={e => setDescription(e.target.value)} rows={4} className={inputCls} placeholder="Brief summary of the situation…" /></Field>
-          {error && <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-400">{error}</div>}
+          {error && <div className="rounded-xl border border-accent bg-ember-100/10 px-3 py-2 text-xs font-semibold text-ember-100">{error}</div>}
           <div className="flex gap-2 pt-1">
             <Btn type="submit" disabled={saving}><FolderPlus size={15} /> {saving ? "Creating…" : "Create Case"}</Btn>
             <Link href="/cases"><Btn variant="secondary">Cancel</Btn></Link>
@@ -63,7 +63,7 @@ export default function NewCasePage() {
       </Card>
       <SafetyBanner />
       <div className="flex items-start gap-2 rounded-xl border border-line bg-panel px-3 py-2 text-[12px] text-muted">
-        <ShieldCheck size={15} className="mt-0.5 shrink-0 text-emerald-400" />
+        <ShieldCheck size={15} className="mt-0.5 shrink-0 text-fg-2" />
         <span>Next step after creating: upload documents on the case page, then click <b>Run AI Analysis</b>. Every action is written to the audit trail.</span>
       </div>
     </div>

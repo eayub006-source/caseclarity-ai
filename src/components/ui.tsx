@@ -44,19 +44,28 @@ type Tone ="slate" | "blue" | "green" | "amber" | "red" | "navy" | "violet";
 
 export function Badge({ children, tone = "slate" }: { children: React.ReactNode; tone?: Tone }) {
   const map: Record<Tone, string> = {
-    slate: "bg-panel-2 text-fg-2 border-line-strong",
-    blue: "bg-ember-20 text-ember-100 border-ember-40",
-    green: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
-    amber: "bg-amber-500/10 text-amber-300 border-amber-500/30",
-    red: "bg-rose-500/10 text-rose-400 border-rose-500/30",
+    slate: "bg-transparent text-muted border-line-strong",
+    blue: "bg-transparent text-ember-100 border-ember-50",
+    green: "bg-transparent text-fg-2 border-line-strong",
+    amber: "bg-ember-100/5 text-ember-100 border-ember-70",
+    red: "bg-ember-100/15 text-white border-accent",
     navy: "bg-accent text-white border-accent",
-    violet: "bg-violet-500/10 text-violet-300 border-violet-500/30",
+    violet: "bg-transparent text-ember-90 border-dashed border-ember-80",
   };
   return <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${map[tone]}`}>{children}</span>;
 }
 
+// Status text only — for places that style the pill themselves (e.g. on an orange surface).
+export function StatusLabel({ status }: { status: string }) {
+  return <>{STATUS[status]?.label ?? status}</>;
+}
+
 export function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { label: string; tone: Tone }> = {
+  const m = STATUS[status] || { label: status, tone: "slate" as const };
+  return <Badge tone={m.tone}>{m.label}</Badge>;
+}
+
+const STATUS: Record<string, { label: string; tone: Tone }> = {
     awaiting_review: { label: "Awaiting review", tone: "amber" },
     in_progress: { label: "In progress", tone: "blue" },
     completed: { label: "Completed", tone: "green" },
@@ -70,10 +79,7 @@ export function StatusBadge({ status }: { status: string }) {
     processing: { label: "Processing…", tone: "blue" },
     uploaded: { label: "Uploaded", tone: "slate" },
     failed: { label: "Failed", tone: "red" },
-  };
-  const m = map[status] || { label: status, tone: "slate" as const };
-  return <Badge tone={m.tone}>{m.label}</Badge>;
-}
+};
 
 export function AiModeBanner() {
   const { config } = useStore();
@@ -86,9 +92,9 @@ export function AiModeBanner() {
     );
   }
   return (
-    <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-amber-100/90">
-      <Sparkles size={15} className="mt-0.5 shrink-0 text-amber-300" />
-      <span><b className="font-semibold text-amber-200">Demo Mode:</b> no LLM key is configured, so a transparent, deterministic demo engine runs the analysis. Confidence is an <b className="font-semibold text-amber-200">uncalibrated heuristic</b>, not a probability. The AI never makes final legal decisions.</span>
+    <div className="flex items-start gap-2.5 rounded-xl border border-ember-60 bg-ember-100/5 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-fg-2">
+      <Sparkles size={15} className="mt-0.5 shrink-0 text-ember-100" />
+      <span><b className="font-semibold text-ember-100">Demo Mode:</b> no LLM key is configured, so a transparent, deterministic demo engine runs the analysis. Confidence is an <b className="font-semibold text-ember-100">uncalibrated heuristic</b>, not a probability. The AI never makes final legal decisions.</span>
     </div>
   );
 }
@@ -130,8 +136,8 @@ export function Btn({ children, onClick, variant = "primary", className = "", di
     primary: "bg-accent text-white hover:bg-accent-hover",
     secondary: "border border-line-strong bg-panel text-fg hover:border-faint hover:bg-panel-2",
     ghost: "text-fg-2 hover:bg-panel-2 hover:text-fg",
-    danger: "bg-rose-600 text-white hover:bg-rose-500",
-    success: "bg-emerald-600 text-white hover:bg-emerald-500",
+    danger: "border border-accent bg-transparent text-ember-100 hover:bg-ember-100/10",
+    success: "bg-accent text-white hover:bg-accent-hover",
   };
   return <button type={type} onClick={onClick} disabled={disabled} className={`${base} ${map[variant]} ${className}`}>{children}</button>;
 }
@@ -148,6 +154,6 @@ export function Field({ label, children }: { label: string; children: React.Reac
 export const inputCls = "w-full rounded-xl border border-line-strong bg-panel-2 px-3.5 py-2.5 text-sm text-fg outline-none placeholder:text-faint focus:border-accent focus:ring-4 focus:ring-ember-20";
 
 export function PriorityDot({ p }: { p: string }) {
-  const c = p === "urgent" ? "bg-rose-500" : p === "high" ? "bg-accent" : p === "medium" ? "bg-amber-400" : "bg-faint";
+  const c = p === "urgent" ? "bg-accent" : p === "high" ? "bg-ember-80" : p === "medium" ? "bg-ember-50" : "bg-faint";
   return <span className={`inline-block h-2 w-2 rounded-full ${c}`} title={p} />;
 }

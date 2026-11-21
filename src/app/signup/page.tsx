@@ -54,7 +54,7 @@ export default function SignupPage() {
             <label className="block"><span className="mb-1.5 block text-[13px] font-medium text-fg-2">Organization (optional)</span>
               <div className="relative"><Building2 size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
                 <input value={org} onChange={e => setOrg(e.target.value)} className="w-full rounded-xl border border-line-strong bg-panel-2 text-fg placeholder:text-faint py-2.5 pl-10 pr-3 text-sm outline-none focus:border-accent focus:ring-4 focus:ring-ember-20" placeholder="Northside Legal Aid" /></div></label>
-            {error && <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-400">{error}</div>}
+            {error && <div className="rounded-xl border border-accent bg-ember-100/10 px-3 py-2 text-xs font-semibold text-ember-100">{error}</div>}
             <button disabled={loading} className="w-full rounded-full bg-accent py-3 text-sm font-medium text-white transition hover:bg-accent-hover disabled:opacity-60">{loading ? "Creating account…" : "Create account"}</button>
             <p className="text-center text-[11px] leading-relaxed text-muted">By creating an account you agree this is a hackathon demo using fictional data. Do not upload real client documents.</p>
           </form>

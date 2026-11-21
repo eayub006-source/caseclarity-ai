@@ -27,7 +27,7 @@ export default function AuditPage() {
   };
 
   const iconFor = (cat: string) => cat === "ai" ? <Sparkles size={13} /> : cat === "document" ? <FileText size={13} /> : cat === "review" ? <ShieldCheck size={13} /> : <Clock size={13} />;
-  const colorFor = (cat: string) => cat === "ai" ? "bg-violet-500" : cat === "document" ? "bg-accent" : cat === "review" ? "bg-emerald-500" : "bg-faint";
+  const colorFor = (cat: string) => cat === "ai" ? "bg-ember-60" : cat === "document" ? "bg-accent" : cat === "review" ? "bg-ember-40" : "bg-faint";
 
   return (
     <div className="space-y-5 animate-fadeUp">
