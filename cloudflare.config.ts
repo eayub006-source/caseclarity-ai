@@ -45,7 +45,7 @@ export default defineConfig({
       // deploy, so making this one required broke the Cloudflare build until it
       // was set by hand. The value lives here, and a fallback result is labelled
       // in the audit trail.
-      LLM_FALLBACK_MODELS: bindings.text("gemini-3.5-flash-lite"),
+      // EXPERIMENT: binding removed to isolate the Workers Builds failure.
       DB: bindings.d1({ name: "caseclarity-summaries" }),
     },
   }),
