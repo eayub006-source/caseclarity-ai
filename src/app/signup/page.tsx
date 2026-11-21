@@ -2,9 +2,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { User, Mail, Lock, Eye, EyeOff, ShieldCheck, ArrowLeft, Building2 } from "lucide-react";
+import { User, Mail, Lock, Eye, EyeOff, ArrowLeft, Building2 } from "lucide-react";
 import { useStore, errorMessage } from "@/lib/store";
-import { Logo } from "@/components/ui";
+import { Logo, AuthAside } from "@/components/ui";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -33,44 +33,32 @@ export default function SignupPage() {
 
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
-      <div className="hidden flex-col justify-between bg-[#0f2043] p-10 text-white lg:flex">
-        <Link href="/"><Logo light /></Link>
-        <div>
-          <h2 className="text-3xl font-extrabold leading-tight">Start trusting your AI-assisted workflow.</h2>
-          <p className="mt-4 max-w-md text-sm leading-relaxed text-slate-300">Create a workspace for your legal-aid team. Upload documents, get explainable recommendations, and keep a complete audit trail.</p>
-          <div className="mt-8 space-y-3 text-sm text-slate-300">
-            {["Free for legal-aid nonprofits (demo)", "No real client data needed — fictional demo included", "Human review required for every recommendation"].map(t => (
-              <div key={t} className="flex items-center gap-2.5"><ShieldCheck size={16} className="text-emerald-400" />{t}</div>
-            ))}
-          </div>
-        </div>
-        <p className="text-xs text-slate-400">© 2026 CaseClarity AI · Team HACKSMITHS</p>
-      </div>
-      <div className="flex items-center justify-center bg-white px-4 py-10">
+      <AuthAside title="Set up a workspace for your legal-aid team." lines={["Fictional demo cases are included — no real client data needed", "Every recommendation needs a person to approve it", "Your account and data stay in this browser"]} />
+      <div className="flex items-center justify-center bg-canvas px-4 py-10">
         <div className="w-full max-w-md animate-fadeUp">
-          <Link href="/" className="mb-6 inline-flex items-center gap-1.5 text-xs font-bold text-slate-400 hover:text-[#0f2043]"><ArrowLeft size={13} /> Back to home</Link>
+          <Link href="/" className="mb-6 inline-flex items-center gap-1.5 text-xs text-muted hover:text-fg"><ArrowLeft size={13} /> Back to home</Link>
           <div className="lg:hidden"><Logo /></div>
-          <h1 className="mt-4 text-2xl font-extrabold text-[#0f2043]">Create your account</h1>
-          <p className="mt-1 text-sm text-slate-500">Set up your case worker workspace in seconds.</p>
+          <h1 className="mt-4 text-3xl font-medium text-fg">Create your account</h1>
+          <p className="mt-1 text-sm text-muted">Set up your case worker workspace in seconds.</p>
           <form onSubmit={submit} className="mt-6 space-y-4">
-            <label className="block"><span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Full name</span>
-              <div className="relative"><User size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input value={name} onChange={e => setName(e.target.value)} required className="w-full rounded-xl border border-slate-300 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" placeholder="Alex Rivera" /></div></label>
-            <label className="block"><span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Work email</span>
-              <div className="relative"><Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input value={email} onChange={e => setEmail(e.target.value)} type="email" required className="w-full rounded-xl border border-slate-300 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" placeholder="you@legalaid.org" /></div></label>
-            <label className="block"><span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Password</span>
-              <div className="relative"><Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input value={password} onChange={e => setPassword(e.target.value)} type={show ? "text" : "password"} required className="w-full rounded-xl border border-slate-300 py-2.5 pl-10 pr-11 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" placeholder="Min. 6 characters" />
-                <button type="button" onClick={() => setShow(!show)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">{show ? <EyeOff size={16} /> : <Eye size={16} />}</button></div></label>
-            <label className="block"><span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Organization (optional)</span>
-              <div className="relative"><Building2 size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input value={org} onChange={e => setOrg(e.target.value)} className="w-full rounded-xl border border-slate-300 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" placeholder="Northside Legal Aid" /></div></label>
-            {error && <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{error}</div>}
-            <button disabled={loading} className="w-full rounded-xl bg-[#0f2043] py-3 text-sm font-bold text-white shadow-md transition hover:bg-[#1e3a5f] disabled:opacity-60">{loading ? "Creating account…" : "Create Account"}</button>
-            <p className="text-center text-[11px] leading-relaxed text-slate-400">By creating an account you agree this is a hackathon demo using fictional data. Do not upload real client documents.</p>
+            <label className="block"><span className="mb-1.5 block text-[13px] font-medium text-fg-2">Full name</span>
+              <div className="relative"><User size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
+                <input value={name} onChange={e => setName(e.target.value)} required className="w-full rounded-xl border border-line-strong bg-panel-2 text-fg placeholder:text-faint py-2.5 pl-10 pr-3 text-sm outline-none focus:border-accent focus:ring-4 focus:ring-ember-20" placeholder="Alex Rivera" /></div></label>
+            <label className="block"><span className="mb-1.5 block text-[13px] font-medium text-fg-2">Work email</span>
+              <div className="relative"><Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
+                <input value={email} onChange={e => setEmail(e.target.value)} type="email" required className="w-full rounded-xl border border-line-strong bg-panel-2 text-fg placeholder:text-faint py-2.5 pl-10 pr-3 text-sm outline-none focus:border-accent focus:ring-4 focus:ring-ember-20" placeholder="you@legalaid.org" /></div></label>
+            <label className="block"><span className="mb-1.5 block text-[13px] font-medium text-fg-2">Password</span>
+              <div className="relative"><Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
+                <input value={password} onChange={e => setPassword(e.target.value)} type={show ? "text" : "password"} required className="w-full rounded-xl border border-line-strong bg-panel-2 text-fg placeholder:text-faint py-2.5 pl-10 pr-11 text-sm outline-none focus:border-accent focus:ring-4 focus:ring-ember-20" placeholder="At least 8 characters" />
+                <button type="button" onClick={() => setShow(!show)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-fg-2">{show ? <EyeOff size={16} /> : <Eye size={16} />}</button></div></label>
+            <label className="block"><span className="mb-1.5 block text-[13px] font-medium text-fg-2">Organization (optional)</span>
+              <div className="relative"><Building2 size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
+                <input value={org} onChange={e => setOrg(e.target.value)} className="w-full rounded-xl border border-line-strong bg-panel-2 text-fg placeholder:text-faint py-2.5 pl-10 pr-3 text-sm outline-none focus:border-accent focus:ring-4 focus:ring-ember-20" placeholder="Northside Legal Aid" /></div></label>
+            {error && <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-400">{error}</div>}
+            <button disabled={loading} className="w-full rounded-full bg-accent py-3 text-sm font-medium text-white transition hover:bg-accent-hover disabled:opacity-60">{loading ? "Creating account…" : "Create account"}</button>
+            <p className="text-center text-[11px] leading-relaxed text-muted">By creating an account you agree this is a hackathon demo using fictional data. Do not upload real client documents.</p>
           </form>
-          <p className="mt-5 text-center text-sm text-slate-500">Already have an account? <Link href="/login" className="font-bold text-[#2563eb] hover:underline">Sign in</Link></p>
+          <p className="mt-5 text-center text-sm text-muted">Already have an account? <Link href="/login" className="font-medium text-accent hover:underline">Sign in</Link></p>
         </div>
       </div>
     </div>

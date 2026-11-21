@@ -34,10 +34,10 @@ export default function NewCasePage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-5 animate-fadeUp">
-      <Link href="/cases" className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-400 hover:text-[#0f2043]"><ArrowLeft size={13} /> Back to cases</Link>
+      <Link href="/cases" className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted hover:text-fg"><ArrowLeft size={13} /> Back to cases</Link>
       <div>
-        <h1 className="text-2xl font-extrabold tracking-tight text-[#0f2043]">Create a New Case</h1>
-        <p className="mt-0.5 text-sm text-slate-500">Open a case, then upload documents and run AI analysis. All data is fictional for this demo.</p>
+        <h1 className="text-3xl font-medium tracking-tight text-fg">Create a New Case</h1>
+        <p className="mt-0.5 text-sm text-muted">Open a case, then upload documents and run AI analysis. All data is fictional for this demo.</p>
       </div>
       <Card className="p-6">
         <form onSubmit={submit} className="space-y-4">
@@ -54,7 +54,7 @@ export default function NewCasePage() {
             </select>
           </Field>
           <Field label="Description"><textarea value={description} onChange={e => setDescription(e.target.value)} rows={4} className={inputCls} placeholder="Brief summary of the situation…" /></Field>
-          {error && <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{error}</div>}
+          {error && <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-400">{error}</div>}
           <div className="flex gap-2 pt-1">
             <Btn type="submit" disabled={saving}><FolderPlus size={15} /> {saving ? "Creating…" : "Create Case"}</Btn>
             <Link href="/cases"><Btn variant="secondary">Cancel</Btn></Link>
@@ -62,8 +62,8 @@ export default function NewCasePage() {
         </form>
       </Card>
       <SafetyBanner />
-      <div className="flex items-start gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] text-slate-500">
-        <ShieldCheck size={15} className="mt-0.5 shrink-0 text-emerald-600" />
+      <div className="flex items-start gap-2 rounded-xl border border-line bg-panel px-3 py-2 text-[12px] text-muted">
+        <ShieldCheck size={15} className="mt-0.5 shrink-0 text-emerald-400" />
         <span>Next step after creating: upload documents on the case page, then click <b>Run AI Analysis</b>. Every action is written to the audit trail.</span>
       </div>
     </div>

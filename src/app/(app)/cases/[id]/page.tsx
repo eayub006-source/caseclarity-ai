@@ -10,21 +10,21 @@ import { runAnalysis, checkRequiredDocs, suggestStatus, fmtDate, fmtTime, fmtSiz
 type Tab = "overview" | "documents" | "analysis" | "recommendation" | "review" | "audit";
 
 function UnverifiedBadge() {
-  return <span title="The AI cited a document or quote that could not be found in this case file" className="ml-1 inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-extrabold text-rose-700"><AlertTriangle size={10} /> Unverified</span>;
+  return <span title="The AI cited a document or quote that could not be found in this case file" className="ml-1 inline-flex items-center gap-1 rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-semibold text-rose-400"><AlertTriangle size={10} /> Unverified</span>;
 }
 
 // A contradiction is shown with both (or more) sides, each traced to its own
 // document, page and verbatim snippet.
 function ContradictionCard({ c }: { c: ContradictionItem }) {
   return (
-    <div className="rounded-xl border border-violet-200 bg-violet-50/60 p-3">
-      <div className="flex items-start gap-2 text-xs font-extrabold text-violet-800"><AlertTriangle size={13} className="mt-0.5 shrink-0" /><span>{c.field}: {c.description}</span></div>
+    <div className="rounded-xl border border-violet-500/30 bg-violet-500/10 p-3">
+      <div className="flex items-start gap-2 text-xs font-semibold text-violet-300"><AlertTriangle size={13} className="mt-0.5 shrink-0" /><span>{c.field}: {c.description}</span></div>
       <div className="mt-2 grid gap-1.5 sm:grid-cols-2 *:min-w-0">
         {c.evidence.map((ev, i) => (
-          <div key={i} className={`rounded-lg border p-2 text-[11px] leading-relaxed ${ev.verified === false ? "border-rose-200 bg-rose-50" : "border-slate-200 bg-white"}`}>
-            <div className="font-bold text-slate-800">{ev.value}</div>
-            <div className="mt-0.5 font-semibold text-blue-700">{ev.doc} · p.{ev.page}{ev.verified === false && <UnverifiedBadge />}</div>
-            <div className="mt-0.5 italic text-slate-500">“{ev.snippet}”</div>
+          <div key={i} className={`rounded-lg border p-2 text-[11px] leading-relaxed ${ev.verified === false ? "border-rose-500/30 bg-rose-500/10" : "border-line bg-panel"}`}>
+            <div className="font-semibold text-fg">{ev.value}</div>
+            <div className="mt-0.5 font-semibold text-accent">{ev.doc} · p.{ev.page}{ev.verified === false && <UnverifiedBadge />}</div>
+            <div className="mt-0.5 italic text-muted">“{ev.snippet}”</div>
           </div>
         ))}
       </div>
@@ -56,7 +56,7 @@ export default function CaseDetailPage() {
   const caseAudit = useMemo(() => audit.filter(a => a.caseId === id), [audit, id]);
   const checklist = useMemo(() => checkRequiredDocs(c?.caseType || "Other", caseDocs), [c?.caseType, caseDocs]);
 
-  if (!c) return <div className="py-20 text-center"><p className="text-sm text-slate-500">Case not found.</p><Link href="/cases" className="mt-3 inline-block text-sm font-bold text-[#2563eb]">Back to cases</Link></div>;
+  if (!c) return <div className="py-20 text-center"><p className="text-sm text-muted">Case not found.</p><Link href="/cases" className="mt-3 inline-block text-sm font-semibold text-accent">Back to cases</Link></div>;
 
   const missing = checklist.missing;
   const completeness = c.completeness ?? 0;
@@ -198,7 +198,7 @@ export default function CaseDetailPage() {
 
   return (
     <div className="space-y-5 animate-fadeUp">
-      <Link href="/cases" className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-400 hover:text-[#0f2043]"><ArrowLeft size={13} /> All cases</Link>
+      <Link href="/cases" className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted hover:text-fg"><ArrowLeft size={13} /> All cases</Link>
 
       {/* Header */}
       <Card className="p-5 sm:p-6">
@@ -207,22 +207,22 @@ export default function CaseDetailPage() {
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone="navy">{c.caseNumber}</Badge>
               <StatusBadge status={c.status} />
-              <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-400"><PriorityDot p={c.priority} /> {c.priority} priority</span>
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-muted"><PriorityDot p={c.priority} /> {c.priority} priority</span>
             </div>
-            <h1 className="mt-2 text-xl font-extrabold leading-snug text-[#0f2043] sm:text-2xl">{c.title}</h1>
-            <div className="mt-1 text-sm font-semibold text-slate-500">{c.clientName} · {c.caseType} · Assigned to {c.assignedTo || "—"}</div>
-            <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-600">{c.description}</p>
+            <h1 className="mt-2 text-xl font-semibold leading-snug text-fg sm:text-2xl">{c.title}</h1>
+            <div className="mt-1 text-sm font-semibold text-muted">{c.clientName} · {c.caseType} · Assigned to {c.assignedTo || "—"}</div>
+            <p className="mt-2 max-w-3xl text-sm leading-relaxed text-fg-2">{c.description}</p>
           </div>
           <div className="flex flex-col items-end gap-2">
             <div className="text-right">
-              <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Completeness</div>
-              <div className="text-2xl font-extrabold text-[#0f2043]">{completeness}%</div>
+              <div className="text-[11px] font-semibold text-muted">Completeness</div>
+              <div className="text-2xl font-semibold text-fg">{completeness}%</div>
             </div>
-            <div className="h-2 w-36 overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${completeness >= 80 ? "bg-emerald-500" : completeness >= 50 ? "bg-amber-500" : "bg-rose-500"}`} style={{ width: `${completeness}%` }} /></div>
-            <div className="text-[11px] text-slate-400">Created {fmtDate(c.createdAt)} · Updated {fmtDate(c.updatedAt)}</div>
+            <div className="h-2 w-36 overflow-hidden rounded-full bg-panel-2"><div className={`h-full rounded-full ${completeness >= 80 ? "bg-emerald-500" : completeness >= 50 ? "bg-amber-500" : "bg-rose-500"}`} style={{ width: `${completeness}%` }} /></div>
+            <div className="text-[11px] text-muted">Created {fmtDate(c.createdAt)} · Updated {fmtDate(c.updatedAt)}</div>
           </div>
         </div>
-        <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+        <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-4">
           <Btn onClick={runAI} disabled={analyzing || uploading > 0 || caseDocs.length === 0}>
             {analyzing ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
             {analyzing ? "Analyzing…" : `Run AI Analysis (${modeLabel})`}
@@ -230,17 +230,17 @@ export default function CaseDetailPage() {
           <Btn variant="secondary" onClick={() => fileRef.current?.click()} disabled={uploading > 0}>{uploading > 0 ? <Loader2 size={15} className="animate-spin" /> : <UploadCloud size={15} />} {uploading > 0 ? `Uploading ${uploading}…` : "Upload Documents"}</Btn>
           <Btn variant="secondary" onClick={() => requestDocs("Case worker requested more documents from client")}><FilePlus size={15} /> Request Documents</Btn>
           <Btn variant="ghost" onClick={flag}><Flag size={15} /> Flag for Investigation</Btn>
-          {isManager && <Btn variant="ghost" className="ml-auto text-rose-600 hover:bg-rose-50" onClick={removeCase}><Trash2 size={15} /> {confirmDelete ? "Confirm delete" : "Delete case"}</Btn>}
+          {isManager && <Btn variant="ghost" className="ml-auto text-rose-400 hover:bg-rose-500/10" onClick={removeCase}><Trash2 size={15} /> {confirmDelete ? "Confirm delete" : "Delete case"}</Btn>}
           <input ref={fileRef} type="file" multiple accept=".pdf,.docx,.txt,.csv,.md" className="hidden" onChange={e => { if (e.target.files) handleFiles(e.target.files); e.target.value = ""; }} />
         </div>
       </Card>
 
       {/* Tabs */}
-      <div className="flex gap-1 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-1.5 scrollbar-thin">
+      <div className="flex gap-1 overflow-x-auto rounded-2xl border border-line bg-panel p-1.5 scrollbar-thin">
         {tabs.map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)} className={`flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition ${tab === t.key ? "bg-[#0f2043] text-white shadow" : "text-slate-500 hover:bg-slate-100"}`}>
+          <button key={t.key} onClick={() => setTab(t.key)} className={`flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${tab === t.key ? "bg-accent text-white shadow" : "text-muted hover:bg-panel-2"}`}>
             {t.label}
-            {t.badge && <span className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold ${tab === t.key ? "bg-white/20" : "bg-amber-100 text-amber-700"}`}>{t.badge}</span>}
+            {t.badge && <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${tab === t.key ? "bg-white/20" : "bg-amber-500/15 text-amber-300"}`}>{t.badge}</span>}
           </button>
         ))}
       </div>
@@ -248,34 +248,34 @@ export default function CaseDetailPage() {
       {tab === "overview" && (
         <div className="grid gap-5 lg:grid-cols-3 *:min-w-0">
           <Card className="p-5 lg:col-span-2">
-            <h2 className="text-sm font-extrabold text-[#0f2043]">Case Summary</h2>
-            <p className="mt-2 text-sm leading-relaxed text-slate-600">{c.description}</p>
+            <h2 className="text-sm font-semibold text-fg">Case Summary</h2>
+            <p className="mt-2 text-sm leading-relaxed text-fg-2">{c.description}</p>
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
               {[{ k: "Documents", v: String(caseDocs.length) }, { k: "Facts Extracted", v: String(caseEx.length) }, { k: "Audit Events", v: String(caseAudit.length) }].map(s => (
-                <div key={s.k} className="rounded-xl bg-slate-50 p-3 text-center"><div className="text-xl font-extrabold text-[#0f2043]">{s.v}</div><div className="text-[11px] font-semibold text-slate-400">{s.k}</div></div>
+                <div key={s.k} className="rounded-xl bg-panel-2 p-3 text-center"><div className="text-xl font-semibold text-fg">{s.v}</div><div className="text-[11px] font-semibold text-muted">{s.k}</div></div>
               ))}
             </div>
             {caseRec && (
-              <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
+              <div className="mt-4 rounded-xl border border-ember-30 bg-ember-10 p-4">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-extrabold uppercase tracking-wide text-blue-700">Latest AI Recommendation</span>
+                  <span className="text-xs font-semibold text-accent">Latest AI Recommendation</span>
                   <span className="flex gap-1.5"><EngineBadge engine={caseRec.engine} /><StatusBadge status={caseRec.status} /></span>
                 </div>
-                <div className="mt-1 text-sm font-extrabold text-[#0f2043]">{caseRec.title}</div>
-                <div className="mt-1 text-xs text-slate-600">{caseRec.summary}</div>
-                <button onClick={() => setTab("recommendation")} className="mt-2 text-xs font-bold text-[#2563eb] hover:underline">View full explanation →</button>
+                <div className="mt-1 text-sm font-semibold text-fg">{caseRec.title}</div>
+                <div className="mt-1 text-xs text-fg-2">{caseRec.summary}</div>
+                <button onClick={() => setTab("recommendation")} className="mt-2 text-xs font-semibold text-accent hover:underline">View full explanation →</button>
               </div>
             )}
           </Card>
           <Card className="p-5">
-            <h2 className="text-sm font-extrabold text-[#0f2043]">Required Documents Checklist</h2>
-            <p className="mt-0.5 text-[11px] text-slate-400">Matched by document name and content — confirm each item yourself.</p>
+            <h2 className="text-sm font-semibold text-fg">Required Documents Checklist</h2>
+            <p className="mt-0.5 text-[11px] text-muted">Matched by document name and content — confirm each item yourself.</p>
             <div className="mt-3 space-y-2">
               {checklist.items.map(item => (
-                <div key={item.name} title={item.matchedDoc ? `Matched: ${item.matchedDoc}` : undefined} className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold ${item.present ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800"}`}>
+                <div key={item.name} title={item.matchedDoc ? `Matched: ${item.matchedDoc}` : undefined} className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold ${item.present ? "bg-emerald-500/10 text-emerald-300" : "bg-rose-500/10 text-rose-300"}`}>
                   {item.present ? <CheckCircle2 size={15} className="shrink-0" /> : <XCircle size={15} className="shrink-0" />}
                   <span className="min-w-0">{item.name}{item.matchedDoc && <span className="block truncate text-[10px] font-medium opacity-70">{item.matchedDoc}</span>}</span>
-                  <span className="ml-auto text-[10px] font-extrabold uppercase">{item.present ? "Present" : "Missing"}</span>
+                  <span className="ml-auto text-[11px] font-medium">{item.present ? "Present" : "Missing"}</span>
                 </div>
               ))}
             </div>
@@ -286,10 +286,10 @@ export default function CaseDetailPage() {
 
       {tab === "documents" && (
         <div className="space-y-4">
-          <div onDragOver={e => { e.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={e => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }} onClick={() => fileRef.current?.click()} className={`cursor-pointer rounded-3xl border-2 border-dashed p-8 text-center transition ${dragOver ? "border-blue-500 bg-blue-50" : "border-slate-300 bg-white hover:border-blue-400"}`}>
-            <UploadCloud size={32} className="mx-auto text-blue-500" />
-            <div className="mt-2 text-sm font-extrabold text-slate-800">Drag & drop PDF, DOCX, TXT or CSV files here</div>
-            <div className="mt-1 text-xs text-slate-400">or click to browse · up to 10 MB each · text is extracted in your browser — the file is not uploaded anywhere (scanned PDFs need OCR, not yet supported)</div>
+          <div onDragOver={e => { e.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={e => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }} onClick={() => fileRef.current?.click()} className={`cursor-pointer rounded-3xl border-2 border-dashed p-8 text-center transition ${dragOver ? "border-accent bg-ember-10" : "border-line-strong bg-panel hover:border-accent"}`}>
+            <UploadCloud size={32} className="mx-auto text-accent" />
+            <div className="mt-2 text-sm font-semibold text-fg">Drag & drop PDF, DOCX, TXT or CSV files here</div>
+            <div className="mt-1 text-xs text-muted">or click to browse · up to 10 MB each · text is extracted in your browser — the file is not uploaded anywhere (scanned PDFs need OCR, not yet supported)</div>
           </div>
           {caseDocs.length === 0 ? (
             <EmptyState icon={<FileText size={22} />} title="No documents yet" desc="Upload at least one document, then run AI Analysis to extract facts and generate a recommendation." />
@@ -298,19 +298,19 @@ export default function CaseDetailPage() {
               {caseDocs.map(d => (
                 <Card key={d.id} className="p-4">
                   <div className="flex items-start gap-3">
-                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600"><FileText size={18} /></div>
+                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-ember-10 text-accent"><FileText size={18} /></div>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-extrabold text-slate-800">{d.name}</div>
-                      <div className="text-[11px] text-slate-400">{d.type} · {fmtSize(d.size)} · {d.pageCount} page(s){d.type !== "PDF" && d.pageCount > 1 ? " (estimated)" : ""} · {d.source} · {fmtDate(d.uploadedAt)}</div>
+                      <div className="truncate text-sm font-semibold text-fg">{d.name}</div>
+                      <div className="text-[11px] text-muted">{d.type} · {fmtSize(d.size)} · {d.pageCount} page(s){d.type !== "PDF" && d.pageCount > 1 ? " (estimated)" : ""} · {d.source} · {fmtDate(d.uploadedAt)}</div>
                       <div className="mt-1.5"><StatusBadge status={d.status} /></div>
                     </div>
                     <div className="flex gap-1">
-                      <button onClick={() => setViewDoc(viewDoc === d.id ? null : d.id)} title="View extracted text" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-blue-600"><Eye size={15} /></button>
-                      <button onClick={() => { const blob = new Blob([(d.extractedText || "").replace(/\f/g, "\n\n--- page break ---\n\n")], { type: "text/plain" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = d.name.replace(/\.[^.]+$/, "") + "_extracted.txt"; a.click(); URL.revokeObjectURL(url); }} title="Download extracted text" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-blue-600"><Download size={15} /></button>
+                      <button onClick={() => setViewDoc(viewDoc === d.id ? null : d.id)} title="View extracted text" className="rounded-lg p-2 text-muted hover:bg-panel-2 hover:text-accent"><Eye size={15} /></button>
+                      <button onClick={() => { const blob = new Blob([(d.extractedText || "").replace(/\f/g, "\n\n--- page break ---\n\n")], { type: "text/plain" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = d.name.replace(/\.[^.]+$/, "") + "_extracted.txt"; a.click(); URL.revokeObjectURL(url); }} title="Download extracted text" className="rounded-lg p-2 text-muted hover:bg-panel-2 hover:text-accent"><Download size={15} /></button>
                     </div>
                   </div>
                   <DocSummary caseId={d.caseId} docId={d.id} />
-                  {viewDoc === d.id && <div className="mt-3 max-h-48 overflow-y-auto whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 scrollbar-thin">{d.extractedText ? d.extractedText.replace(/\f/g, "\n\n— page break —\n\n") : "No extractable text."}</div>}
+                  {viewDoc === d.id && <div className="mt-3 max-h-48 overflow-y-auto whitespace-pre-wrap rounded-xl bg-panel-2 p-3 text-xs leading-relaxed text-fg-2 scrollbar-thin">{d.extractedText ? d.extractedText.replace(/\f/g, "\n\n— page break —\n\n") : "No extractable text."}</div>}
                 </Card>
               ))}
             </div>
@@ -326,19 +326,19 @@ export default function CaseDetailPage() {
           ) : (
             <>
               <Card className="p-5">
-                <h2 className="text-sm font-extrabold text-[#0f2043]">Extracted Facts ({caseEx.length})</h2>
-                <p className="mt-0.5 text-xs text-slate-400">Every fact is cited to its source document and page. Verify against originals before relying on them.</p>
+                <h2 className="text-sm font-semibold text-fg">Extracted Facts ({caseEx.length})</h2>
+                <p className="mt-0.5 text-xs text-muted">Every fact is cited to its source document and page. Verify against originals before relying on them.</p>
                 <div className="mt-4 overflow-x-auto">
                   <table className="w-full min-w-[640px] text-left text-xs">
-                    <thead><tr className="border-b border-slate-200 text-[11px] uppercase tracking-wide text-slate-400"><th className="pb-2 pr-3">Field</th><th className="pb-2 pr-3">Value</th><th className="pb-2 pr-3">Source</th><th className="pb-2 pr-3">Confidence</th><th className="pb-2">Snippet</th></tr></thead>
+                    <thead><tr className="border-b border-line text-[11px] text-muted"><th className="pb-2 pr-3">Field</th><th className="pb-2 pr-3">Value</th><th className="pb-2 pr-3">Source</th><th className="pb-2 pr-3">Confidence</th><th className="pb-2">Snippet</th></tr></thead>
                     <tbody>
                       {caseEx.map(e => (
-                        <tr key={e.id} className={`border-b border-slate-100 align-top ${e.verified === false ? "bg-rose-50/50" : ""}`}>
-                          <td className="py-2.5 pr-3 font-bold text-slate-700">{e.fieldName}</td>
-                          <td className="py-2.5 pr-3 font-semibold text-slate-800">{e.fieldValue}</td>
-                          <td className="py-2.5 pr-3 text-slate-500">{e.sourceDoc} · p.{e.sourcePage}{e.verified === false && <UnverifiedBadge />}</td>
-                          <td className="py-2.5 pr-3"><span className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold ${e.confidence >= 90 ? "bg-emerald-100 text-emerald-700" : e.confidence >= 60 ? "bg-amber-100 text-amber-700" : "bg-rose-100 text-rose-700"}`}>{e.confidence}%</span></td>
-                          <td className="max-w-[220px] py-2.5 text-slate-500">“{e.sourceSnippet}”</td>
+                        <tr key={e.id} className={`border-b border-line align-top ${e.verified === false ? "bg-rose-500/10" : ""}`}>
+                          <td className="py-2.5 pr-3 font-semibold text-fg-2">{e.fieldName}</td>
+                          <td className="py-2.5 pr-3 font-semibold text-fg">{e.fieldValue}</td>
+                          <td className="py-2.5 pr-3 text-muted">{e.sourceDoc} · p.{e.sourcePage}{e.verified === false && <UnverifiedBadge />}</td>
+                          <td className="py-2.5 pr-3"><span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${e.confidence >= 90 ? "bg-emerald-500/15 text-emerald-400" : e.confidence >= 60 ? "bg-amber-500/15 text-amber-300" : "bg-rose-500/15 text-rose-400"}`}>{e.confidence}%</span></td>
+                          <td className="max-w-[220px] py-2.5 text-muted">“{e.sourceSnippet}”</td>
                         </tr>
                       ))}
                     </tbody>
@@ -347,15 +347,15 @@ export default function CaseDetailPage() {
               </Card>
               <div className="grid gap-4 md:grid-cols-2 *:min-w-0">
                 <Card className="p-5">
-                  <h3 className="flex items-center gap-2 text-sm font-extrabold text-rose-700"><AlertTriangle size={15} /> Missing Information ({missing.length})</h3>
-                  {missing.length === 0 ? <p className="mt-2 text-xs text-slate-500">No required documents missing. All checklist items are present.</p> : <ul className="mt-2 space-y-1.5 text-xs text-slate-600">{missing.map(m => <li key={m} className="flex gap-2"><XCircle size={13} className="mt-0.5 shrink-0 text-rose-500" />{m}</li>)}</ul>}
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-rose-400"><AlertTriangle size={15} /> Missing Information ({missing.length})</h3>
+                  {missing.length === 0 ? <p className="mt-2 text-xs text-muted">No required documents missing. All checklist items are present.</p> : <ul className="mt-2 space-y-1.5 text-xs text-fg-2">{missing.map(m => <li key={m} className="flex gap-2"><XCircle size={13} className="mt-0.5 shrink-0 text-rose-500" />{m}</li>)}</ul>}
                 </Card>
                 <Card className="p-5">
-                  <h3 className="flex items-center gap-2 text-sm font-extrabold text-violet-700"><AlertTriangle size={15} /> Contradictions Detected ({caseRec?.contradictions?.length ?? 0})</h3>
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-violet-300"><AlertTriangle size={15} /> Contradictions Detected ({caseRec?.contradictions?.length ?? 0})</h3>
                   {caseRec?.contradictions?.length ? (
                     <div className="mt-2 space-y-2.5">{caseRec.contradictions.map((x, i) => <ContradictionCard key={i} c={x} />)}</div>
                   ) : (
-                    <p className="mt-2 text-xs text-slate-500">No contradictions detected in the latest analysis. {config.aiMode === "demo" && "The demo engine compares income and rent figures and checks termination timelines."}</p>
+                    <p className="mt-2 text-xs text-muted">No contradictions detected in the latest analysis. {config.aiMode === "demo" && "The demo engine compares income and rent figures and checks termination timelines."}</p>
                   )}
                 </Card>
               </div>
@@ -372,25 +372,25 @@ export default function CaseDetailPage() {
             <>
               <AiModeBanner />
               <Card className="overflow-hidden">
-                <div className="border-b border-slate-100 bg-gradient-to-r from-[#0f2043] to-[#1e3a5f] p-5 text-white sm:p-6">
+                <div className="border-b border-line bg-gradient-to-br from-ember-70 via-ember-50 to-ember-20 p-5 text-white sm:p-6">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <div className="text-[11px] font-extrabold uppercase tracking-[0.14em] text-blue-300">AI Recommendation · {caseRec.engine === "llm" ? "Live AI" : caseRec.engine === "seed" ? "Sample data" : "Demo engine"}</div>
-                      <h2 className="mt-1 text-lg font-extrabold leading-snug sm:text-xl">{caseRec.title}</h2>
-                      <p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-300">{caseRec.summary}</p>
+                      <div className="text-[11px] font-semibold text-white/75">AI Recommendation · {caseRec.engine === "llm" ? "Live AI" : caseRec.engine === "seed" ? "Sample data" : "Demo engine"}</div>
+                      <h2 className="mt-1 text-lg font-semibold leading-snug sm:text-xl">{caseRec.title}</h2>
+                      <p className="mt-1 max-w-2xl text-sm leading-relaxed text-faint">{caseRec.summary}</p>
                     </div>
                     <div className="rounded-2xl bg-white/10 px-4 py-3 text-center backdrop-blur">
-                      <div className="text-[10px] font-extrabold uppercase tracking-wider text-blue-200">Confidence (uncalibrated)</div>
-                      <div className="text-2xl font-extrabold">{caseRec.confidence}%</div>
-                      <div className="text-[10px] text-blue-200">{caseRec.confidence >= 85 ? "High" : caseRec.confidence >= 70 ? "Moderate" : "Low"} · heuristic only</div>
+                      <div className="text-[10px] font-semibold text-white/75">Confidence (uncalibrated)</div>
+                      <div className="text-2xl font-semibold">{caseRec.confidence}%</div>
+                      <div className="text-[10px] text-white/75">{caseRec.confidence >= 85 ? "High" : caseRec.confidence >= 70 ? "Moderate" : "Low"} · heuristic only</div>
                     </div>
                   </div>
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <StatusBadge status={caseRec.status} />
-                    <span className="text-[11px] text-slate-300">Generated {fmtTime(caseRec.createdAt)} · Requires human approval</span>
+                    <span className="text-[11px] text-faint">Generated {fmtTime(caseRec.createdAt)} · Requires human approval</span>
                   </div>
                   {caseRec.insufficientEvidence && (
-                    <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-300/70 bg-amber-100/90 px-3 py-2 text-xs font-semibold text-amber-900">
+                    <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-300/70 bg-amber-500/15 px-3 py-2 text-xs font-semibold text-amber-200">
                       <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                       <span>The AI reported that the documents do <b>not</b> sufficiently support a conclusion. Treat this recommendation as incomplete — gather more evidence before relying on it.</span>
                     </div>
@@ -398,35 +398,35 @@ export default function CaseDetailPage() {
                 </div>
                 <div className="grid gap-5 p-5 sm:p-6 lg:grid-cols-2">
                   <div>
-                    <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-400">Why the AI generated this</h3>
-                    <p className="mt-2 text-sm leading-relaxed text-slate-700">{caseRec.reasoning}</p>
-                    <h3 className="mt-5 text-xs font-extrabold uppercase tracking-wide text-slate-400">Supporting Evidence</h3>
+                    <h3 className="text-xs font-semibold text-muted">Why the AI generated this</h3>
+                    <p className="mt-2 text-sm leading-relaxed text-fg-2">{caseRec.reasoning}</p>
+                    <h3 className="mt-5 text-xs font-semibold text-muted">Supporting Evidence</h3>
                     <div className="mt-2 space-y-2">
                       {caseRec.evidence.map((ev, i) => (
-                        <div key={i} className={`rounded-xl border p-3 ${ev.verified === false ? "border-rose-200 bg-rose-50" : "border-slate-200 bg-slate-50"}`}>
-                          <div className="text-xs font-bold text-slate-800">{ev.claim}</div>
-                          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-blue-700"><FileText size={12} /> {ev.doc} · Page {ev.page}{ev.verified === false && <UnverifiedBadge />}</div>
-                          <div className="mt-1 text-[11px] italic leading-relaxed text-slate-500">“{ev.snippet}”</div>
+                        <div key={i} className={`rounded-xl border p-3 ${ev.verified === false ? "border-rose-500/30 bg-rose-500/10" : "border-line bg-panel-2"}`}>
+                          <div className="text-xs font-semibold text-fg">{ev.claim}</div>
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-accent"><FileText size={12} /> {ev.doc} · Page {ev.page}{ev.verified === false && <UnverifiedBadge />}</div>
+                          <div className="mt-1 text-[11px] italic leading-relaxed text-muted">“{ev.snippet}”</div>
                         </div>
                       ))}
-                      {caseRec.evidence.length === 0 && <p className="text-xs text-slate-400">No evidence cited — treat this recommendation with extra caution.</p>}
+                      {caseRec.evidence.length === 0 && <p className="text-xs text-muted">No evidence cited — treat this recommendation with extra caution.</p>}
                     </div>
                   </div>
                   <div>
                     {!!caseRec.contradictions?.length && (
                       <>
-                        <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-400">Contradictions</h3>
+                        <h3 className="text-xs font-semibold text-muted">Contradictions</h3>
                         <div className="mb-5 mt-2 space-y-2.5">{caseRec.contradictions.map((x, i) => <ContradictionCard key={i} c={x} />)}</div>
                       </>
                     )}
-                    <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-400">Missing Information</h3>
-                    {caseRec.missingInfo.length === 0 ? <p className="mt-2 text-xs text-emerald-700">None — all required items present.</p> : <ul className="mt-2 space-y-1.5 text-xs text-slate-700">{caseRec.missingInfo.map(m => <li key={m} className="flex gap-2"><XCircle size={13} className="mt-0.5 shrink-0 text-rose-500" />{m}</li>)}</ul>}
-                    <h3 className="mt-5 text-xs font-extrabold uppercase tracking-wide text-slate-400">Uncertainties & Possible Exceptions</h3>
-                    <ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-slate-700">{caseRec.uncertainties.map((u, i) => <li key={i} className="flex gap-2"><Clock size={13} className="mt-0.5 shrink-0 text-amber-500" />{u}</li>)}</ul>
-                    <h3 className="mt-5 text-xs font-extrabold uppercase tracking-wide text-slate-400">Suggested Next Steps</h3>
-                    <ol className="mt-2 space-y-1.5 text-xs text-slate-700">{caseRec.nextSteps.map((s, i) => <li key={i} className="flex gap-2"><span className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-[#0f2043] text-[9px] font-extrabold text-white">{i + 1}</span>{s}</li>)}</ol>
+                    <h3 className="text-xs font-semibold text-muted">Missing Information</h3>
+                    {caseRec.missingInfo.length === 0 ? <p className="mt-2 text-xs text-emerald-400">None — all required items present.</p> : <ul className="mt-2 space-y-1.5 text-xs text-fg-2">{caseRec.missingInfo.map(m => <li key={m} className="flex gap-2"><XCircle size={13} className="mt-0.5 shrink-0 text-rose-500" />{m}</li>)}</ul>}
+                    <h3 className="mt-5 text-xs font-semibold text-muted">Uncertainties & Possible Exceptions</h3>
+                    <ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-fg-2">{caseRec.uncertainties.map((u, i) => <li key={i} className="flex gap-2"><Clock size={13} className="mt-0.5 shrink-0 text-amber-500" />{u}</li>)}</ul>
+                    <h3 className="mt-5 text-xs font-semibold text-muted">Suggested Next Steps</h3>
+                    <ol className="mt-2 space-y-1.5 text-xs text-fg-2">{caseRec.nextSteps.map((s, i) => <li key={i} className="flex gap-2"><span className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-accent text-[9px] font-semibold text-white">{i + 1}</span>{s}</li>)}</ol>
                     {caseRec.reviewedBy && (
-                      <div className="mt-5 rounded-xl bg-emerald-50 p-3 text-xs text-emerald-900">
+                      <div className="mt-5 rounded-xl bg-emerald-500/10 p-3 text-xs text-emerald-900">
                         <b>Reviewed by {caseRec.reviewedBy}</b> — {caseRec.reviewComment}
                       </div>
                     )}
@@ -434,17 +434,17 @@ export default function CaseDetailPage() {
                 </div>
               </Card>
               <Card className="p-5">
-                <h3 className="text-sm font-extrabold text-[#0f2043]">Human Review</h3>
+                <h3 className="text-sm font-semibold text-fg">Human Review</h3>
                 {recLocked ? (
-                  <div className="mt-2 flex items-start gap-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
+                  <div className="mt-2 flex items-start gap-2 rounded-xl bg-panel-2 p-3 text-xs text-fg-2">
                     <Lock size={14} className="mt-0.5 shrink-0" />
                     <span>This recommendation was <b>{caseRec.status}</b>{caseRec.reviewedBy ? ` by ${caseRec.reviewedBy}` : ""} and is locked. Run a new analysis to get a fresh recommendation.</span>
                   </div>
                 ) : (
                   <>
-                    <p className="mt-0.5 text-xs text-slate-500">Your decision is recorded in the audit trail under your name. The AI recommendation is advisory only.</p>
-                    <textarea value={reviewComment} onChange={e => setReviewComment(e.target.value)} rows={2} placeholder="Add a comment (optional) — e.g. 'Verified against originals. Proceeding.'" className="mt-3 w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
-                    {editing && <textarea value={modifiedText} onChange={e => setModifiedText(e.target.value)} rows={2} placeholder="Modified recommendation text…" className="mt-2 w-full rounded-xl border border-blue-300 bg-blue-50 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500" />}
+                    <p className="mt-0.5 text-xs text-muted">Your decision is recorded in the audit trail under your name. The AI recommendation is advisory only.</p>
+                    <textarea value={reviewComment} onChange={e => setReviewComment(e.target.value)} rows={2} placeholder="Add a comment (optional) — e.g. 'Verified against originals. Proceeding.'" className="mt-3 w-full rounded-xl border border-line-strong px-3.5 py-2.5 text-sm outline-none focus:border-accent focus:ring-4 focus:ring-ember-20" />
+                    {editing && <textarea value={modifiedText} onChange={e => setModifiedText(e.target.value)} rows={2} placeholder="Modified recommendation text…" className="mt-2 w-full rounded-xl border border-ember-40 bg-ember-10 px-3.5 py-2.5 text-sm outline-none focus:border-accent" />}
                     <div className="mt-3 flex flex-wrap gap-2">
                       <Btn variant="success" disabled={reviewing} onClick={() => review("approved")}>{reviewing ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />} Approve</Btn>
                       <Btn variant="secondary" disabled={reviewing} onClick={() => setEditing(!editing)}><Pencil size={15} /> Modify</Btn>
@@ -463,15 +463,15 @@ export default function CaseDetailPage() {
       {tab === "review" && (
         <div className="space-y-4">
           <Card className="p-5">
-            <h2 className="text-sm font-extrabold text-[#0f2043]">Review History</h2>
+            <h2 className="text-sm font-semibold text-fg">Review History</h2>
             {caseAudit.filter(a => a.category === "review").length === 0 ? (
-              <p className="mt-2 text-xs text-slate-400">No human review actions yet. Approve, reject or modify the recommendation to create a review record.</p>
+              <p className="mt-2 text-xs text-muted">No human review actions yet. Approve, reject or modify the recommendation to create a review record.</p>
             ) : (
               <div className="mt-3 space-y-3">
                 {caseAudit.filter(a => a.category === "review").map(a => (
-                  <div key={a.id} className="flex gap-3 rounded-xl bg-slate-50 p-3">
-                    <ShieldCheck size={16} className="mt-0.5 shrink-0 text-emerald-600" />
-                    <div><div className="text-xs font-extrabold text-slate-800">{a.action} <span className="font-semibold text-slate-400">· {a.actor}</span></div><div className="text-xs text-slate-600">{a.details}</div><div className="text-[10px] text-slate-400">{fmtTime(a.timestamp)}</div></div>
+                  <div key={a.id} className="flex gap-3 rounded-xl bg-panel-2 p-3">
+                    <ShieldCheck size={16} className="mt-0.5 shrink-0 text-emerald-400" />
+                    <div><div className="text-xs font-semibold text-fg">{a.action} <span className="font-semibold text-muted">· {a.actor}</span></div><div className="text-xs text-fg-2">{a.details}</div><div className="text-[10px] text-muted">{fmtTime(a.timestamp)}</div></div>
                   </div>
                 ))}
               </div>
@@ -483,22 +483,22 @@ export default function CaseDetailPage() {
 
       {tab === "audit" && (
         <Card className="p-5">
-          <h2 className="flex items-center gap-2 text-sm font-extrabold text-[#0f2043]"><History size={15} /> Audit Trail — {c.caseNumber}</h2>
-          <p className="mt-0.5 text-xs text-slate-400">Every upload, analysis, extraction, recommendation and human action with date & time, newest first.</p>
-          <div className="relative mt-5 space-y-4 before:absolute before:bottom-2 before:left-[15px] before:top-2 before:w-px before:bg-slate-200">
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-fg"><History size={15} /> Audit Trail — {c.caseNumber}</h2>
+          <p className="mt-0.5 text-xs text-muted">Every upload, analysis, extraction, recommendation and human action with date & time, newest first.</p>
+          <div className="relative mt-5 space-y-4 before:absolute before:bottom-2 before:left-[15px] before:top-2 before:w-px before:bg-line">
             {caseAudit.map(a => (
               <div key={a.id} className="relative flex gap-4 pl-1">
-                <div className={`z-10 grid h-8 w-8 shrink-0 place-items-center rounded-full border-2 border-white text-white ${a.category === "ai" ? "bg-violet-500" : a.category === "document" ? "bg-blue-500" : a.category === "review" ? "bg-emerald-500" : "bg-slate-400"}`}>
+                <div className={`z-10 grid h-8 w-8 shrink-0 place-items-center rounded-full border-2 border-panel text-white ${a.category === "ai" ? "bg-violet-500" : a.category === "document" ? "bg-accent" : a.category === "review" ? "bg-emerald-500" : "bg-faint"}`}>
                   {a.category === "ai" ? <Sparkles size={13} /> : a.category === "document" ? <FileText size={13} /> : a.category === "review" ? <ShieldCheck size={13} /> : <Clock size={13} />}
                 </div>
-                <div className="min-w-0 flex-1 rounded-xl bg-slate-50 p-3">
-                  <div className="flex flex-wrap items-center gap-2 text-xs font-extrabold text-slate-800">{a.action}<Badge tone="slate">{a.category}</Badge><span className="ml-auto text-[10px] font-semibold text-slate-400">{fmtTime(a.timestamp)}</span></div>
-                  <div className="mt-0.5 text-xs text-slate-600">{a.details}</div>
-                  <div className="text-[10px] text-slate-400">by {a.actor}</div>
+                <div className="min-w-0 flex-1 rounded-xl bg-panel-2 p-3">
+                  <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-fg">{a.action}<Badge tone="slate">{a.category}</Badge><span className="ml-auto text-[10px] font-semibold text-muted">{fmtTime(a.timestamp)}</span></div>
+                  <div className="mt-0.5 text-xs text-fg-2">{a.details}</div>
+                  <div className="text-[10px] text-muted">by {a.actor}</div>
                 </div>
               </div>
             ))}
-            {caseAudit.length === 0 && <p className="pl-10 text-xs text-slate-400">No audit events yet for this case.</p>}
+            {caseAudit.length === 0 && <p className="pl-10 text-xs text-muted">No audit events yet for this case.</p>}
           </div>
         </Card>
       )}
@@ -520,13 +520,13 @@ export default function CaseDetailPage() {
   }, [caseId, docId]);
   if (!item) return null;
   return (
-    <div className="mt-3 rounded-xl bg-blue-50 p-3 text-xs leading-relaxed text-slate-700">
-      <div className="font-extrabold text-blue-700">AI summary</div>
+    <div className="mt-3 rounded-xl bg-ember-10 p-3 text-xs leading-relaxed text-fg-2">
+      <div className="font-semibold text-accent">AI summary</div>
       <p className="mt-1">{item.summary}</p>
       {item.highlights.length > 0 && (
         <ul className="mt-2 list-disc space-y-1 pl-4">
           {item.highlights.map((h, i) => (
-            <li key={i}>{h.text} <span className="text-slate-400">(p. {h.page}{h.verified ? "" : ", unverified"})</span></li>
+            <li key={i}>{h.text} <span className="text-muted">(p. {h.page}{h.verified ? "" : ", unverified"})</span></li>
           ))}
         </ul>
       )}
