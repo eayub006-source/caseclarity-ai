@@ -50,8 +50,16 @@ export async function POST(req: Request) {
   const prompt = buildPrompt(caseInfo, docs, REQUIRED_DOCS[caseInfo.caseType] || REQUIRED_DOCS["Other"]);
 
   try {
-    const content = await postChatCompletion(
-      { baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, model: cfg.model, timeoutMs: cfg.timeoutMs },
+    const outcome = await postChatCompletion(
+      {
+        baseUrl: cfg.baseUrl,
+        apiKey: cfg.apiKey,
+        model: cfg.model,
+        timeoutMs: cfg.timeoutMs,
+        fallbackModels: cfg.fallbackModels,
+        maxAttempts: cfg.maxAttempts,
+        retryBaseDelayMs: cfg.retryBaseDelayMs,
+      },
       [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: prompt },
@@ -59,12 +67,22 @@ export async function POST(req: Request) {
     );
     let parsed: unknown;
     try {
-      parsed = JSON.parse(content);
+      parsed = JSON.parse(outcome.content);
     } catch {
       return NextResponse.json({ mode: "demo", reason: "LLM returned invalid JSON — fell back to the demo engine." });
     }
     const result = validateLlmResult(parsed, docs);
-    return NextResponse.json({ mode: "llm", model: cfg.model, result });
+    // `model` is the model that actually answered, which may be a fallback.
+    // `primaryModel` is always the configured primary, so the audit trail can
+    // show when a fallback stood in.
+    return NextResponse.json({
+      mode: "llm",
+      model: outcome.model,
+      primaryModel: outcome.primaryModel,
+      fallbackUsed: outcome.fallbackUsed,
+      attempts: outcome.attempts,
+      result,
+    });
   } catch (e) {
     // Provider failures (timeout, rate limit, network, HTTP error) and invalid
     // output both degrade honestly to the labelled demo engine.

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { validateLlmResult, buildPrompt, postChatCompletion, LlmError } from "../src/lib/llm";
 
 const docs = [
@@ -161,7 +161,7 @@ describe("LLM output validation", () => {
 });
 
 describe("postChatCompletion (provider call)", () => {
-  const cfg = { baseUrl: "https://llm.example/v1", apiKey: "secret-key", model: "test-model", timeoutMs: 5000 };
+  const cfg = { baseUrl: "https://llm.example/v1", apiKey: "secret-key", model: "test-model", timeoutMs: 5000, retryBaseDelayMs: 0 };
   const messages = [{ role: "user", content: "hello" }];
   const okBody = { choices: [{ message: { content: "{\"ok\":true}" } }] };
 
@@ -172,7 +172,13 @@ describe("postChatCompletion (provider call)", () => {
       return new Response(JSON.stringify(okBody), { status: 200, headers: { "Content-Type": "application/json" } });
     }) as unknown as typeof fetch;
 
-    await expect(postChatCompletion(cfg, messages, fetchImpl)).resolves.toBe("{\"ok\":true}");
+    await expect(postChatCompletion(cfg, messages, fetchImpl)).resolves.toMatchObject({
+      content: "{\"ok\":true}",
+      model: "test-model",
+      primaryModel: "test-model",
+      fallbackUsed: false,
+      attempts: 1,
+    });
     expect(seen!.url).toBe("https://llm.example/v1/chat/completions");
     const headers = seen!.init.headers as Record<string, string>;
     expect(headers.Authorization).toBe("Bearer secret-key");
@@ -210,9 +216,125 @@ describe("postChatCompletion (provider call)", () => {
     expect(body).not.toHaveProperty("thinking_budget");
   });
 
-  it("throws LlmError with the status on an HTTP error", async () => {
-    const fetchImpl = (async () => new Response("rate limited", { status: 429 })) as unknown as typeof fetch;
-    await expect(postChatCompletion(cfg, messages, fetchImpl)).rejects.toMatchObject({ name: "LlmError", status: 429 });
+  const jsonFetch = (status: number, body: unknown) =>
+    (async () => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } })) as unknown as typeof fetch;
+
+  // --- authentication: never retried, never fallen back -----------------------
+
+  it("does not retry an authentication failure (401)", async () => {
+    const fetchImpl = vi.fn(jsonFetch(401, { error: { message: "Incorrect API key provided" } }));
+    await expect(postChatCompletion(cfg, messages, fetchImpl)).rejects.toMatchObject({ name: "LlmError", status: 401 });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry or fall back on 403 — every model uses the same key", async () => {
+    const fetchImpl = vi.fn(jsonFetch(403, { error: { message: "forbidden" } }));
+    await expect(postChatCompletion({ ...cfg, fallbackModels: ["fallback-model"] }, messages, fetchImpl)).rejects.toMatchObject({ status: 403 });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("throws immediately on a non-transient HTTP error (400)", async () => {
+    const fetchImpl = vi.fn(jsonFetch(400, { error: { message: "bad request" } }));
+    await expect(postChatCompletion(cfg, messages, fetchImpl)).rejects.toMatchObject({ status: 400 });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  // --- transient faults: retried with backoff --------------------------------
+
+  it("retries a transient 429 and succeeds", async () => {
+    let calls = 0;
+    const fetchImpl = vi.fn(async () => {
+      calls++;
+      return calls < 2
+        ? new Response("slow down", { status: 429 })
+        : new Response(JSON.stringify(okBody), { status: 200, headers: { "Content-Type": "application/json" } });
+    }) as unknown as typeof fetch;
+    await expect(postChatCompletion(cfg, messages, fetchImpl)).resolves.toMatchObject({ content: "{\"ok\":true}", attempts: 2, fallbackUsed: false });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("honours the provider's Retry-After header", async () => {
+    let calls = 0;
+    const fetchImpl = vi.fn(async () => {
+      calls++;
+      if (calls < 2) return new Response("slow down", { status: 429, headers: { "Retry-After": "1" } });
+      return new Response(JSON.stringify(okBody), { status: 200, headers: { "Content-Type": "application/json" } });
+    }) as unknown as typeof fetch;
+    const started = Date.now();
+    await expect(postChatCompletion(cfg, messages, fetchImpl)).resolves.toMatchObject({ attempts: 2 });
+    // The base backoff is 0 in tests, so the wait came from Retry-After.
+    expect(Date.now() - started).toBeGreaterThanOrEqual(900);
+  });
+
+  it("retries a transient 503 and succeeds", async () => {
+    let calls = 0;
+    const fetchImpl = vi.fn(async () => {
+      calls++;
+      return calls < 3
+        ? new Response(JSON.stringify({ error: { code: 503, message: "This model is currently experiencing high demand.", status: "UNAVAILABLE" } }), { status: 503 })
+        : new Response(JSON.stringify(okBody), { status: 200, headers: { "Content-Type": "application/json" } });
+    }) as unknown as typeof fetch;
+    await expect(postChatCompletion(cfg, messages, fetchImpl)).resolves.toMatchObject({ content: "{\"ok\":true}", attempts: 3 });
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it("gives up after the bounded number of attempts when 503 persists", async () => {
+    const fetchImpl = vi.fn(jsonFetch(503, { error: { code: 503, message: "This model is currently experiencing high demand.", status: "UNAVAILABLE" } }));
+    await expect(postChatCompletion({ ...cfg, maxAttempts: 3 }, messages, fetchImpl)).rejects.toThrow(/HTTP 503/);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it("retries a timeout", async () => {
+    let calls = 0;
+    const fetchImpl = vi.fn(async (_url: string | URL, init: RequestInit) => {
+      calls++;
+      if (calls < 2) {
+        return new Promise((_resolve, reject) => {
+          init.signal!.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })));
+        });
+      }
+      return new Response(JSON.stringify(okBody), { status: 200, headers: { "Content-Type": "application/json" } });
+    }) as unknown as typeof fetch;
+    await expect(postChatCompletion({ ...cfg, timeoutMs: 20 }, messages, fetchImpl)).resolves.toMatchObject({ attempts: 2 });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  // --- model fallback chain ---------------------------------------------------
+
+  it("falls back to the next model when the primary is unavailable", async () => {
+    const seen: string[] = [];
+    const fetchImpl = vi.fn(async (_url: string | URL, init: RequestInit) => {
+      const body = JSON.parse(init.body as string);
+      seen.push(body.model);
+      if (body.model === "test-model") return new Response("overloaded", { status: 503 });
+      return new Response(JSON.stringify(okBody), { status: 200, headers: { "Content-Type": "application/json" } });
+    }) as unknown as typeof fetch;
+    await expect(postChatCompletion({ ...cfg, fallbackModels: ["fallback-model"], maxAttempts: 3 }, messages, fetchImpl))
+      .resolves.toMatchObject({ content: "{\"ok\":true}", model: "fallback-model", primaryModel: "test-model", fallbackUsed: true, attempts: 3 });
+    expect(seen).toEqual(["test-model", "test-model", "fallback-model"]);
+  });
+
+  it("skips a fallback model whose ID is unknown (404) instead of retrying it", async () => {
+    const seen: string[] = [];
+    const fetchImpl = vi.fn(async (_url: string | URL, init: RequestInit) => {
+      const body = JSON.parse(init.body as string);
+      seen.push(body.model);
+      if (body.model === "good-model") return new Response(JSON.stringify(okBody), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (body.model === "ghost-model") return new Response("not found", { status: 404 });
+      return new Response("overloaded", { status: 503 });
+    }) as unknown as typeof fetch;
+    await expect(postChatCompletion({ ...cfg, fallbackModels: ["ghost-model", "good-model"], maxAttempts: 4 }, messages, fetchImpl))
+      .resolves.toMatchObject({ model: "good-model", fallbackUsed: true });
+    expect(seen).toEqual(["test-model", "test-model", "ghost-model", "good-model"]);
+  });
+
+  it("reports every model it tried when the whole chain is exhausted", async () => {
+    const fetchImpl = vi.fn(jsonFetch(503, { error: { message: "overloaded" } }));
+    const err = await postChatCompletion({ ...cfg, fallbackModels: ["fallback-model"], maxAttempts: 3 }, messages, fetchImpl).catch((e) => e);
+    expect(err).toBeInstanceOf(LlmError);
+    expect(err.message).toContain("test-model");
+    expect(err.message).toContain("fallback-model");
+    expect(err.message).toContain("3 attempt(s)");
   });
 
   it("throws LlmError when the request times out", async () => {
