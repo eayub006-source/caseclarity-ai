@@ -122,6 +122,16 @@ await check("12. provider failure (HTTP 500)", "error-500", DOCS, (b) => {
   return /HTTP 500/.test(b.reason) || `unexpected reason: ${b.reason}`;
 });
 
+await check("13. transient 503 recovers on retry", "flaky-503", DOCS, (b) => {
+  if (!isLlm(b)) return `expected mode llm, got ${JSON.stringify(b).slice(0, 120)}`;
+  return (b.attempts ?? 0) >= 3 || `expected at least 3 attempts, got ${b.attempts}`;
+});
+
+await check("14. persistent 503 exhausts retries and falls back to demo", "error-503", DOCS, (b) => {
+  if (b.mode !== "demo") return `expected demo fallback, got mode ${b.mode}`;
+  return /503/.test(b.reason) || `unexpected reason: ${b.reason}`;
+});
+
 await setScenario("normal");
 console.log(`\n${failures === 0 ? "ALL SCENARIOS PASSED" : failures + " SCENARIO(S) FAILED"}`);
 process.exit(failures === 0 ? 0 : 1);

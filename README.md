@@ -290,6 +290,12 @@ All settings are optional. Without them the app runs in Demo Mode.
 | `LLM_BASE_URL` | `https://api.openai.com/v1` | Base URL of an OpenAI-compatible API |
 | `LLM_MODEL` | `gpt-4o-mini` | Model name sent to the API |
 | `LLM_TIMEOUT_MS` | `90000` | Provider request timeout in milliseconds (clamped 5000–300000) |
+| `LLM_FALLBACK_MODELS` | `gemini-3.5-flash-lite` | Comma-separated models tried in order when the primary is unavailable |
+| `LLM_MAX_ATTEMPTS` | `3` | Total provider attempts shared across the model chain (clamped 1–5) |
+| `LLM_RETRY_BASE_DELAY_MS` | `1000` | Base delay for exponential backoff between attempts (clamped 0–30000) |
+
+- **Retries and fallback.** Transient provider faults (HTTP 429, 500, 502, 503, 504) and timeouts are retried with exponential backoff and full jitter, up to `LLM_MAX_ATTEMPTS` attempts in total. If the primary model is still unavailable, each entry in `LLM_FALLBACK_MODELS` is tried in turn. Authentication failures (401/403) are **never** retried and never fall back — the same key is used for every model, so retrying cannot help. If everything fails, the request degrades to the labelled Demo Mode.
+- **Audit provenance.** A result produced by a fallback model is still a genuine LLM result, and the audit entry names the model that answered and says that the primary was unavailable. Demo Mode results are labelled `Demo Mode` and are never presented as Live AI.
 
 - **`npm run dev`** reads them from `.env` (copy `.env.example`).
 - **Cloudflare** reads them as Worker secrets, and the local Worker preview reads `.dev.vars` — see [Deploying to Cloudflare](#deploying-to-cloudflare).

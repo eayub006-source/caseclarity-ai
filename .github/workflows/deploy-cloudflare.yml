@@ -35,6 +35,8 @@ env:
   # Gemini OpenAI-compatible endpoint (Bearer auth) — see CONTEXT.md.
   LLM_BASE_URL: https://generativelanguage.googleapis.com/v1beta/openai/
   LLM_MODEL: gemini-3.8-flash
+  # Fallback model for transient primary-model failures (e.g. HTTP 503).
+  LLM_FALLBACK_MODELS: gemini-3.5-flash-lite
   LLM_TIMEOUT_MS: "90000"
 
 jobs:
@@ -61,6 +63,10 @@ jobs:
 
       # Copies the GitHub repository secrets into the existing Worker's secret
       # store. The values never enter the bundle, the logs or this repository.
+      #
+      # Every required input is checked explicitly first: a missing account ID
+      # or token used to fail deep inside `cf` with an unrelated message, which
+      # is how this step previously broke a deploy.
       - name: Set Worker secrets
         if: inputs.set-secrets
         env:
@@ -69,6 +75,14 @@ jobs:
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
         run: |
           set -euo pipefail
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN is not set as a repository secret — cf cannot authenticate."
+            exit 1
+          fi
+          if [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+            echo "::error::CLOUDFLARE_ACCOUNT_ID is not set as a repository secret — cf cannot resolve the account."
+            exit 1
+          fi
           if [ -z "${LLM_API_KEY:-}" ]; then
             echo "::error::LLM_API_KEY is empty — refusing to deploy Live AI without credentials."
             exit 1
@@ -80,12 +94,20 @@ jobs:
             --arg key "$LLM_API_KEY" \
             --arg url "$LLM_BASE_URL" \
             --arg model "$LLM_MODEL" \
+            --arg fallback "$LLM_FALLBACK_MODELS" \
             --arg timeout "$LLM_TIMEOUT_MS" \
-            '{LLM_API_KEY:     {name: "LLM_API_KEY",     text: $key,    type: "secret_text"},
-              LLM_BASE_URL:   {name: "LLM_BASE_URL",   text: $url,    type: "secret_text"},
-              LLM_MODEL:      {name: "LLM_MODEL",      text: $model,  type: "secret_text"},
-              LLM_TIMEOUT_MS: {name: "LLM_TIMEOUT_MS", text: $timeout, type: "secret_text"}}' > "$payload"
+            '{LLM_API_KEY:          {name: "LLM_API_KEY",          text: $key,     type: "secret_text"},
+              LLM_BASE_URL:        {name: "LLM_BASE_URL",        text: $url,     type: "secret_text"},
+              LLM_MODEL:           {name: "LLM_MODEL",           text: $model,   type: "secret_text"},
+              LLM_FALLBACK_MODELS: {name: "LLM_FALLBACK_MODELS", text: $fallback, type: "secret_text"},
+              LLM_TIMEOUT_MS:      {name: "LLM_TIMEOUT_MS",      text: $timeout, type: "secret_text"}}' > "$payload"
+          echo "Writing Worker secrets for ${WORKER_NAME} (account ${CLOUDFLARE_ACCOUNT_ID})..."
           npx --no-install cf workers secrets bulk-edit --worker "$WORKER_NAME" --secrets "@$payload"
+          # Confirm the secrets are on the Worker before deploying, so a silent
+          # partial write can never ship a Worker that quietly falls back to the
+          # OpenAI defaults (the previous production misconfiguration).
+          echo "Worker secrets now bound:"
+          npx --no-install cf workers secrets list --worker "$WORKER_NAME"
 
       # Updates the existing Worker in place (name comes from
       # cloudflare.config.ts). Builds with Vite, then promotes to 100% traffic.

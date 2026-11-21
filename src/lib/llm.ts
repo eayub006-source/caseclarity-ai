@@ -220,25 +220,71 @@ export interface LlmClientConfig {
   apiKey: string;
   model: string;
   timeoutMs: number;
+  /** Alternative models tried in order when the primary is unavailable. */
+  fallbackModels?: string[];
+  /** Total HTTP attempts across the whole model chain. Default 3. */
+  maxAttempts?: number;
+  /** Base delay for exponential backoff, in ms. Default 1000. */
+  retryBaseDelayMs?: number;
+}
+
+export interface LlmCallResult {
+  content: string;
+  /** The model that actually answered — the primary or a fallback. */
+  model: string;
+  /** The configured primary model, whether or not it answered. */
+  primaryModel: string;
+  /** True when a fallback model produced the answer. */
+  fallbackUsed: boolean;
+  /** Total HTTP attempts made across every model. */
+  attempts: number;
 }
 
 /** A provider failure the route can turn into an honest Demo Mode fallback. */
 export class LlmError extends Error {
-  constructor(message: string, readonly status?: number) {
+  constructor(message: string, readonly status?: number, readonly retryAfterMs?: number) {
     super(message);
     this.name = "LlmError";
   }
 }
 
-/**
- * Calls an OpenAI-compatible Chat Completions endpoint and returns the message
- * content. Throws LlmError on timeout, network failure, non-2xx status or an
- * unreadable body. `fetchImpl` is injectable so tests can simulate failures.
- */
-export async function postChatCompletion(
+// Honour the provider's Retry-After when it sends one (delta-seconds or an
+// HTTP date). Returns undefined when the header is absent or unparseable.
+function parseRetryAfter(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.round(seconds * 1000);
+  const date = Date.parse(value);
+  return Number.isFinite(date) ? Math.max(0, date - Date.now()) : undefined;
+}
+
+// Transient provider faults that are worth another go. 401/403 are
+// deliberately absent: a rejected key is rejected every time, so retrying it
+// only burns time before the honest Demo Mode fallback.
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
+// Authentication/authorisation failures are never retried and never fall
+// back — every model in the chain uses the same key.
+const AUTH_STATUS = new Set([401, 403]);
+const DEFAULT_MAX_ATTEMPTS = 3;
+const DEFAULT_RETRY_BASE_DELAY_MS = 1000;
+const MAX_RETRY_DELAY_MS = 8000;
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+// Exponential backoff with full jitter, so a provider recovering from a
+// capacity spike is not hit by a synchronised retry storm.
+function backoffDelay(attempt: number, baseDelayMs: number): number {
+  if (baseDelayMs <= 0) return 0;
+  const exponential = Math.min(MAX_RETRY_DELAY_MS, baseDelayMs * 2 ** (attempt - 1));
+  return Math.round(exponential * (0.5 + Math.random() * 0.5));
+}
+
+/** One HTTP attempt against a single model. */
+async function postChatCompletionOnce(
   cfg: LlmClientConfig,
   messages: { role: string; content: string }[],
-  fetchImpl: typeof fetch = fetch,
+  model: string,
+  fetchImpl: typeof fetch,
 ): Promise<string> {
   // An explicit AbortController + timer: AbortSignal.timeout() is not
   // honoured by every fetch implementation (the Cloudflare Worker runtime
@@ -252,7 +298,7 @@ export async function postChatCompletion(
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.apiKey}` },
       signal: controller.signal,
       body: JSON.stringify({
-        model: cfg.model,
+        model,
         temperature: 0.2,
         response_format: { type: "json_object" },
         // Cap reasoning depth. Google's OpenAI-compatible endpoint maps
@@ -273,10 +319,81 @@ export async function postChatCompletion(
   }
   if (!res.ok) {
     const detail = (await res.text().catch(() => "")).slice(0, 200);
-    throw new LlmError(`LLM request failed (HTTP ${res.status})${detail ? `: ${detail}` : ""}`, res.status);
+    throw new LlmError(`LLM request failed (HTTP ${res.status})${detail ? `: ${detail}` : ""}`, res.status, parseRetryAfter(res.headers.get("retry-after")));
   }
   const data = (await res.json().catch(() => null)) as { choices?: { message?: { content?: string } }[] } | null;
   const content = data?.choices?.[0]?.message?.content;
   if (!content || typeof content !== "string") throw new LlmError("LLM returned no message content");
   return content;
+}
+
+/**
+ * Calls an OpenAI-compatible Chat Completions endpoint with bounded retries and
+ * a configurable model fallback chain.
+ *
+ * Order of operations: try the primary model, retrying transient faults with
+ * exponential backoff; if the attempt budget is exhausted (or the model ID is
+ * unknown), move on to each fallback model in turn. The total number of HTTP
+ * attempts is bounded by `maxAttempts`, shared across the chain so a fallback
+ * can never turn one slow request into an unbounded one.
+ *
+ * Authentication failures (401/403) throw immediately: the same key is used
+ * for every model, so retrying or falling back cannot help.
+ *
+ * Throws LlmError on timeout, network failure, non-2xx status or an unreadable
+ * body. `fetchImpl` is injectable so tests can simulate failures.
+ */
+export async function postChatCompletion(
+  cfg: LlmClientConfig,
+  messages: { role: string; content: string }[],
+  fetchImpl: typeof fetch = fetch,
+): Promise<LlmCallResult> {
+  const models = [cfg.model, ...(cfg.fallbackModels ?? []).filter((m) => m && m !== cfg.model)];
+  const maxAttempts = Math.max(1, cfg.maxAttempts ?? DEFAULT_MAX_ATTEMPTS);
+  const baseDelayMs = Math.max(0, cfg.retryBaseDelayMs ?? DEFAULT_RETRY_BASE_DELAY_MS);
+  // Spread the bounded budget across the chain so every model gets a chance:
+  // with 3 attempts and 2 models the primary is tried twice, then the fallback.
+  const perModelMax = Math.max(1, Math.ceil(maxAttempts / models.length));
+  const failures: string[] = [];
+  let attempts = 0;
+  let lastStatus: number | undefined;
+
+  for (let modelIndex = 0; modelIndex < models.length; modelIndex++) {
+    let modelAttempts = 0;
+    while (attempts < maxAttempts && modelAttempts < perModelMax) {
+      attempts++;
+      modelAttempts++;
+      try {
+        const content = await postChatCompletionOnce(cfg, messages, models[modelIndex], fetchImpl);
+        return {
+          content,
+          model: models[modelIndex],
+          primaryModel: cfg.model,
+          fallbackUsed: modelIndex > 0,
+          attempts,
+        };
+      } catch (e) {
+        if (!(e instanceof LlmError)) throw e;
+        lastStatus = e.status;
+        failures.push(`${models[modelIndex]}: ${e.message}`);
+        // A rejected key is fatal: retrying or falling back cannot help.
+        if (e.status !== undefined && AUTH_STATUS.has(e.status)) throw e;
+        // 404 means this model ID does not exist — skip to the next model
+        // rather than retrying a name the provider will never resolve.
+        if (e.status === 404) break;
+        // Any other non-transient HTTP error is a real failure, not a blip.
+        if (e.status !== undefined && !RETRYABLE_STATUS.has(e.status)) throw e;
+        if (attempts >= maxAttempts || modelAttempts >= perModelMax) break;
+        // Never wait longer than 30 s between attempts: the retry count is
+        // bounded, and so is the wait.
+        const delay = Math.min(30_000, Math.max(backoffDelay(attempts, baseDelayMs), e.retryAfterMs ?? 0));
+        await sleep(delay);
+      }
+    }
+  }
+
+  throw new LlmError(
+    `LLM request failed for ${models.join(", ")} after ${attempts} attempt(s): ${failures.join(" | ")}`,
+    lastStatus,
+  );
 }

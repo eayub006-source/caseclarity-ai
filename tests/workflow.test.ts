@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import * as W from "../src/lib/workspace";
-import { runAnalysis, type Extraction, type Recommendation } from "../src/lib/core";
+import { runAnalysis, describeLlmModel, type Extraction, type Recommendation } from "../src/lib/core";
 import { validateLlmResult, type LlmDoc } from "../src/lib/llm";
 
 // The browser-side workflow (upload → extract → Live AI analysis → facts →
@@ -122,6 +122,12 @@ describe("Live AI workflow (analysis → recommendation → review → audit)", 
     const actions = audited.audit.filter((a) => a.caseId === caseId).map((a) => a.action);
     expect(actions).toContain("AI analysis completed (LLM)");
     expect(actions).toContain("Recommendation approved");
+  });
+
+  it("the audit note names the model and flags a fallback, so a real LLM result never reads as demo", () => {
+    expect(describeLlmModel("gemini-3.8-flash", "gemini-3.8-flash", false)).toBe("Model gemini-3.8-flash");
+    expect(describeLlmModel("gemini-3.8-flash", "gemini-3.5-flash-lite", true))
+      .toBe("Model gemini-3.5-flash-lite (fallback — primary gemini-3.8-flash unavailable)");
   });
 
   it("the demo engine fallback also produces a pending recommendation with cited evidence", () => {
