@@ -43,7 +43,15 @@ describe("POST /api/analyze", () => {
   const env = process.env;
 
   beforeEach(() => {
-    process.env = { ...env, LLM_API_KEY: "test-key", LLM_BASE_URL: "http://llm.test/v1", LLM_MODEL: "test-model" };
+    process.env = {
+      ...env,
+      LLM_API_KEY: "test-key",
+      LLM_BASE_URL: "http://llm.test/v1",
+      LLM_MODEL: "test-model",
+      LLM_FALLBACK_MODELS: "fallback-model",
+      // Keep the suite fast: the tests assert attempt counts, not timings.
+      LLM_RETRY_BASE_DELAY_MS: "0",
+    };
   });
   afterEach(() => {
     process.env = env;
@@ -109,6 +117,54 @@ describe("POST /api/analyze", () => {
     expect(body.reason).toMatch(/rate limit/i);
   });
 
+  it("retries a transient 503 and still returns the LLM result", async () => {
+    let calls = 0;
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      calls++;
+      return calls < 2
+        ? new Response(JSON.stringify({ error: { code: 503, message: "This model is currently experiencing high demand.", status: "UNAVAILABLE" } }), { status: 503 })
+        : llmResponse(VALID_PAYLOAD);
+    }));
+    const body = await (await POST(req({ ...CASE, ...DOCS }))).json();
+    expect(body.mode).toBe("llm");
+    expect(body.model).toBe("test-model");
+    expect(calls).toBe(2);
+  });
+
+  it("uses the fallback model when the primary is unavailable, and says so", async () => {
+    const seen: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url: string | URL, init: RequestInit) => {
+      const body = JSON.parse(init.body as string);
+      seen.push(body.model);
+      if (body.model === "test-model") return new Response("overloaded", { status: 503 });
+      return llmResponse(VALID_PAYLOAD);
+    }));
+    const body = await (await POST(req({ ...CASE, ...DOCS }))).json();
+    expect(body.mode).toBe("llm");
+    expect(body.model).toBe("fallback-model");
+    expect(body.primaryModel).toBe("test-model");
+    expect(body.fallbackUsed).toBe(true);
+    expect(seen).toEqual(["test-model", "test-model", "fallback-model"]);
+  });
+
+  it("does not retry a 401", async () => {
+    const fetchMock = vi.fn(async () => new Response("Incorrect API key provided", { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const body = await (await POST(req({ ...CASE, ...DOCS }))).json();
+    expect(body.mode).toBe("demo");
+    expect(body.reason).toMatch(/HTTP 401/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to demo after exhausting retries on persistent 503", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ error: { code: 503, message: "high demand", status: "UNAVAILABLE" } }), { status: 503 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const body = await (await POST(req({ ...CASE, ...DOCS }))).json();
+    expect(body.mode).toBe("demo");
+    expect(body.reason).toMatch(/503/);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it("falls back to demo mode when the provider returns invalid JSON", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: "not json" } }] }), { status: 200 })));
     const body = await (await POST(req({ ...CASE, ...DOCS }))).json();
@@ -125,6 +181,9 @@ describe("POST /api/analyze", () => {
 
   it("falls back to demo mode when the provider times out", async () => {
     process.env.LLM_TIMEOUT_MS = "20";
+    // The timeout is clamped to a 5 s floor, so a single attempt keeps this
+    // test quick while still exercising the timeout path.
+    process.env.LLM_MAX_ATTEMPTS = "1";
     const fetchMock = vi.fn(async (_url: string | URL, init: RequestInit) => new Promise((_resolve, reject) => {
       init.signal!.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })));
     }));

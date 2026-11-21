@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, FileText, UploadCloud, Sparkles, CheckCircle2, XCircle, Pencil, MessageSquare, Flag, FilePlus, ShieldCheck, AlertTriangle, Clock, History, BrainCircuit, Loader2, Download, Eye, Lock, Trash2 } from "lucide-react";
 import { useStore, errorMessage } from "@/lib/store";
 import { Card, Badge, StatusBadge, StatusLabel, AiModeBanner, EngineBadge, SafetyBanner, EmptyState, Btn, PriorityDot } from "@/components/ui";
-import { runAnalysis, checkRequiredDocs, suggestStatus, fmtDate, fmtTime, fmtSize, uid, Extraction, CaseStatus, ContradictionItem } from "@/lib/core";
+import { runAnalysis, checkRequiredDocs, suggestStatus, fmtDate, fmtTime, fmtSize, uid, describeLlmModel, Extraction, CaseStatus, ContradictionItem } from "@/lib/core";
 
 type Tab = "overview" | "documents" | "analysis" | "recommendation" | "review" | "audit";
 
@@ -110,7 +110,11 @@ export default function CaseDetailPage() {
             status: "pending", engine: "llm", createdAt: new Date().toISOString(),
           });
           await applyCaseUpdate(suggestStatus(missing.length, r.contradictions.length));
-          await log(id, "AI analysis completed (LLM)", `Model ${data.model}: ${exs.length} facts extracted${r.unverifiedCount ? `, ${r.unverifiedCount} unverified citation(s)` : ""}. Recommendation: ${r.recommendation.title} (confidence ${r.recommendation.confidence}, uncalibrated heuristic)`, "ai");
+          // Record which model actually answered. A fallback result is still a
+          // genuine LLM result, but the audit must show that the primary model
+          // was unavailable and which model stood in.
+          const modelNote = describeLlmModel(data.primaryModel ?? config.model ?? "the primary model", data.model, data.fallbackUsed === true);
+          await log(id, "AI analysis completed (LLM)", `${modelNote}: ${exs.length} facts extracted${r.unverifiedCount ? `, ${r.unverifiedCount} unverified citation(s)` : ""}. Recommendation: ${r.recommendation.title} (confidence ${r.recommendation.confidence}, uncalibrated heuristic)`, "ai");
           notify(r.unverifiedCount ? `Analysis complete — ${r.unverifiedCount} citation(s) could not be verified. Check them before relying on them.` : "LLM analysis complete — review the recommendation.", r.unverifiedCount ? "warn" : "ok");
           setTab("recommendation");
           return;

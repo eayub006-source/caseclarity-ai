@@ -20,10 +20,20 @@ const PORT = Number(process.argv[2]) || 4010;
 const SCENARIOS = new Set([
   "normal", "consistent", "contradiction", "missing", "ambiguous",
   "unsupported", "invalid-citation", "invalid-json", "timeout",
-  "error-401", "error-429", "error-500",
+  "error-401", "error-429", "error-500", "error-503", "flaky-503",
 ]);
 
+// The real Gemini capacity error, so tests exercise the exact production fault.
+const OVERLOADED = {
+  error: {
+    code: 503,
+    message: "This model is currently experiencing high demand. Spikes in demand are usually temporary.",
+    status: "UNAVAILABLE",
+  },
+};
+
 let scenario = "normal";
+let flakyCount = 0;
 const calls = [];
 
 // --- prompt parsing (same markers as src/lib/llm.ts buildPrompt) -------------
@@ -187,6 +197,7 @@ const server = http.createServer((req, res) => {
     const next = url.pathname.slice("/__scenario/".length);
     if (!SCENARIOS.has(next)) return json(400, { error: `unknown scenario; use one of ${[...SCENARIOS].join(", ")}` });
     scenario = next;
+    flakyCount = 0;
     return json(200, { scenario });
   }
   if (url.pathname === "/__calls") return json(200, { scenario, count: calls.length, calls: calls.slice(-5) });
@@ -207,6 +218,13 @@ const server = http.createServer((req, res) => {
     if (scenario === "error-401") return json(401, { error: { message: "invalid api key" } });
     if (scenario === "error-429") return json(429, { error: { message: "rate limit exceeded" } });
     if (scenario === "error-500") return json(500, { error: { message: "upstream failure" } });
+    if (scenario === "error-503") return json(503, OVERLOADED);
+    // Fails twice, then answers normally — proves the client retries instead of
+    // falling straight back to the demo engine.
+    if (scenario === "flaky-503") {
+      flakyCount++;
+      if (flakyCount <= 2) return json(503, OVERLOADED);
+    }
     if (scenario === "invalid-json") {
       return json(200, { choices: [{ message: { content: "this is not JSON" } }] });
     }

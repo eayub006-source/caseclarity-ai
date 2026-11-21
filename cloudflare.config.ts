@@ -42,6 +42,13 @@ export default defineConfig({
       // Request timeout in ms (5000–300000). Must be declared here: an
       // undeclared variable silently falls back to the 90 s code default.
       LLM_TIMEOUT_MS: bindings.secret(),
+      // Comma-separated fallback models, tried in order when the primary model
+      // is unavailable (for example a transient HTTP 503). This is a plain-text
+      // binding, deliberately NOT a secret: a declared secret is required at
+      // deploy, so making this one required broke the Cloudflare build until it
+      // was set by hand. The value lives here, and a fallback result is labelled
+      // in the audit trail.
+      LLM_FALLBACK_MODELS: bindings.text("gemini-3.5-flash-lite"),
       DB: bindings.d1({ name: "caseclarity-summaries" }),
     },
   }),

@@ -9,7 +9,20 @@ import { authenticate, createAccount, findUser, type LocalAccount } from "./acco
 import * as W from "./workspace";
 
 export interface ExtractResponse { name: string; text: string; pageCount: number; type: string; pagesEstimated: boolean; warning?: string; }
-export type AnalyzeResponse = { mode: "llm"; model: string; result: VerifiedResult } | { mode: "demo"; reason: string };
+export type AnalyzeResponse =
+  | {
+      mode: "llm";
+      /** The model that actually answered — the primary or a fallback. */
+      model: string;
+      /** The configured primary model, whether or not it answered. */
+      primaryModel?: string;
+      /** True when a fallback model stood in for an unavailable primary. */
+      fallbackUsed?: boolean;
+      /** Total provider attempts made across the model chain. */
+      attempts?: number;
+      result: VerifiedResult;
+    }
+  | { mode: "demo"; reason: string };
 
 // The app's single data gateway. There is no database: the workspace starts
 // as a copy of the fictional dataset in src/data/demo-data.ts and every

@@ -61,6 +61,10 @@ jobs:
 
       # Copies the GitHub repository secrets into the existing Worker's secret
       # store. The values never enter the bundle, the logs or this repository.
+      #
+      # Every required input is checked explicitly first: a missing account ID
+      # or token used to fail deep inside `cf` with an unrelated message, which
+      # is how this step previously broke a deploy.
       - name: Set Worker secrets
         if: inputs.set-secrets
         env:
@@ -69,6 +73,14 @@ jobs:
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
         run: |
           set -euo pipefail
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN is not set as a repository secret — cf cannot authenticate."
+            exit 1
+          fi
+          if [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+            echo "::error::CLOUDFLARE_ACCOUNT_ID is not set as a repository secret — cf cannot resolve the account."
+            exit 1
+          fi
           if [ -z "${LLM_API_KEY:-}" ]; then
             echo "::error::LLM_API_KEY is empty — refusing to deploy Live AI without credentials."
             exit 1
@@ -76,6 +88,9 @@ jobs:
           payload="$(mktemp)"
           chmod 600 "$payload"
           trap 'rm -f "$payload"' EXIT
+          # LLM_FALLBACK_MODELS is intentionally absent: it is a plain-text
+          # binding in cloudflare.config.ts, not a secret, so it needs no value
+          # here and cannot fail the deploy when unset.
           jq -nc \
             --arg key "$LLM_API_KEY" \
             --arg url "$LLM_BASE_URL" \
@@ -85,7 +100,13 @@ jobs:
               LLM_BASE_URL:   {name: "LLM_BASE_URL",   text: $url,    type: "secret_text"},
               LLM_MODEL:      {name: "LLM_MODEL",      text: $model,  type: "secret_text"},
               LLM_TIMEOUT_MS: {name: "LLM_TIMEOUT_MS", text: $timeout, type: "secret_text"}}' > "$payload"
+          echo "Writing Worker secrets for ${WORKER_NAME} (account ${CLOUDFLARE_ACCOUNT_ID})..."
           npx --no-install cf workers secrets bulk-edit --worker "$WORKER_NAME" --secrets "@$payload"
+          # Confirm the secrets are on the Worker before deploying, so a silent
+          # partial write can never ship a Worker that quietly falls back to the
+          # OpenAI defaults (the previous production misconfiguration).
+          echo "Worker secrets now bound:"
+          npx --no-install cf workers secrets list --worker "$WORKER_NAME"
 
       # Updates the existing Worker in place (name comes from
       # cloudflare.config.ts). Builds with Vite, then promotes to 100% traffic.

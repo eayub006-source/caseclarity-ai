@@ -48,6 +48,15 @@ export interface AuditEntry {
 export interface User { id?: string; name: string; email: string; role: string; roleLabel: string; org: string; }
 export interface AppConfig { aiMode: "llm" | "demo"; model: string | null; }
 
+// Audit note for a completed Live AI analysis. A fallback-model result is still
+// a genuine LLM result, but the audit must show that the primary model was
+// unavailable and which model stood in — it must never read as a demo result.
+export function describeLlmModel(primaryModel: string, model: string, fallbackUsed: boolean): string {
+  return fallbackUsed
+    ? `Model ${model} (fallback — primary ${primaryModel} unavailable)`
+    : `Model ${model}`;
+}
+
 export const CASE_STATUSES: CaseStatus[] = ["awaiting_review", "in_progress", "completed", "missing_docs", "flagged"];
 export const PRIORITIES = ["low", "medium", "high", "urgent"] as const;
 export const CASE_TYPES = ["Housing / Eviction", "Benefits Appeal", "Employment", "Family Law", "Immigration", "Consumer Debt", "Other"];
