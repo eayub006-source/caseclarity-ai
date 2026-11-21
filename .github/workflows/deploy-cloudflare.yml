@@ -35,8 +35,6 @@ env:
   # Gemini OpenAI-compatible endpoint (Bearer auth) — see CONTEXT.md.
   LLM_BASE_URL: https://generativelanguage.googleapis.com/v1beta/openai/
   LLM_MODEL: gemini-3.8-flash
-  # Fallback model for transient primary-model failures (e.g. HTTP 503).
-  LLM_FALLBACK_MODELS: gemini-3.5-flash-lite
   LLM_TIMEOUT_MS: "90000"
 
 jobs:
@@ -90,17 +88,18 @@ jobs:
           payload="$(mktemp)"
           chmod 600 "$payload"
           trap 'rm -f "$payload"' EXIT
+          # LLM_FALLBACK_MODELS is intentionally absent: it is a plain-text
+          # binding in cloudflare.config.ts, not a secret, so it needs no value
+          # here and cannot fail the deploy when unset.
           jq -nc \
             --arg key "$LLM_API_KEY" \
             --arg url "$LLM_BASE_URL" \
             --arg model "$LLM_MODEL" \
-            --arg fallback "$LLM_FALLBACK_MODELS" \
             --arg timeout "$LLM_TIMEOUT_MS" \
-            '{LLM_API_KEY:          {name: "LLM_API_KEY",          text: $key,     type: "secret_text"},
-              LLM_BASE_URL:        {name: "LLM_BASE_URL",        text: $url,     type: "secret_text"},
-              LLM_MODEL:           {name: "LLM_MODEL",           text: $model,   type: "secret_text"},
-              LLM_FALLBACK_MODELS: {name: "LLM_FALLBACK_MODELS", text: $fallback, type: "secret_text"},
-              LLM_TIMEOUT_MS:      {name: "LLM_TIMEOUT_MS",      text: $timeout, type: "secret_text"}}' > "$payload"
+            '{LLM_API_KEY:     {name: "LLM_API_KEY",     text: $key,    type: "secret_text"},
+              LLM_BASE_URL:   {name: "LLM_BASE_URL",   text: $url,    type: "secret_text"},
+              LLM_MODEL:      {name: "LLM_MODEL",      text: $model,  type: "secret_text"},
+              LLM_TIMEOUT_MS: {name: "LLM_TIMEOUT_MS", text: $timeout, type: "secret_text"}}' > "$payload"
           echo "Writing Worker secrets for ${WORKER_NAME} (account ${CLOUDFLARE_ACCOUNT_ID})..."
           npx --no-install cf workers secrets bulk-edit --worker "$WORKER_NAME" --secrets "@$payload"
           # Confirm the secrets are on the Worker before deploying, so a silent
