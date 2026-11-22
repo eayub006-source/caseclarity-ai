@@ -736,8 +736,8 @@ is reachable, or is running this revision. The workflow targets a Worker named `
 requires Cloudflare credentials and an LLM key when it writes secrets.
 
 **Summary database.** `cloudflare.config.ts` binds `DB` to the existing D1 database
-`caseclarity-summaries`. Create it once in the Cloudflare dashboard (Storage & Databases → D1) if this is
-a new account — a missing binding makes the deploy fail. The Worker creates/extends the
+`caseclarity-summaries` (ID `188ba1dc-644b-4648-b240-35916a55adff`). This binding targets the existing
+database in its Cloudflare account. The Worker creates/extends the
 `document_summaries` table on first use with the additive migration described in
 [`db/schema.sql`](db/schema.sql); there is no separate migration command and no data is dropped. Existing
 records, including those stored by the earlier case-ID-scoped implementation, are preserved.
@@ -745,8 +745,12 @@ records, including those stored by the earlier case-ID-scoped implementation, ar
 ```bash
 # From your machine; requires your own Cloudflare account and authorization
 npx cf auth login
+npm run build:cloudflare
 npm run deploy
 ```
+
+`vinext/cf` reads `cloudflare.config.ts` for the Worker configuration; `npx wrangler deploy` bypasses
+this configuration. Use `npm run deploy` instead.
 
 Or dispatch the **Deploy to Cloudflare Workers** workflow (`workflow_dispatch`) with an optional git ref
 and a `stage-only` toggle. According to `.github/workflows/deploy-cloudflare.yml`, the workflow:
@@ -840,7 +844,7 @@ so Worker defaults apply unless the configuration is changed.
 
 | Setting | Value |
 |---|---|
-| Binding name | `DB` (declared in `cloudflare.config.ts` as `bindings.d1({ name: "caseclarity-summaries" })`) |
+| Binding name | `DB` (declared in `cloudflare.config.ts` as `bindings.d1({ name: "caseclarity-summaries", id: "188ba1dc-644b-4648-b240-35916a55adff" })`) |
 | Database | `caseclarity-summaries` — the existing database; the app never creates, renames or empties it |
 | Table | `document_summaries` (see [`db/schema.sql`](db/schema.sql)) |
 | Schema management | Additive runtime migration in `src/lib/summaries-db.ts`; runs once per Worker isolate |

@@ -46,6 +46,8 @@
 - **Hosting:** Cloudflare Workers via vinext (Vite-based Next.js). `npm run dev` (Next.js) still works for local development.
 - **The PostgreSQL version** (server-side sessions, bcrypt accounts on the server, persistent shared data) is preserved in git history at commit `34dd6c0`.
 
+**Current test suite:** 144/144 Vitest tests (2026-11-22).
+
 **Quality gates at last review (2026-11-21):** 85/85 Vitest tests · `npm run typecheck` ✓ · `npm run lint` ✓ · `npm run build` ✓ · `npm run build:cloudflare` ✓ · 12-scenario Live AI run against the mock provider passes (`tests/e2e-live-ai.mjs`) · scripted browser walkthrough (16 flows, desktop + 390 px mobile) passes on both `next dev` and the local Worker preview with zero console errors · `npm audit --omit=dev` → 0 vulnerabilities.
 
 ---
