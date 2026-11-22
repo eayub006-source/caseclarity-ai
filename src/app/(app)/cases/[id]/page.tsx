@@ -1,8 +1,8 @@
 "use client";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, FileText, UploadCloud, Sparkles, CheckCircle2, XCircle, Pencil, MessageSquare, Flag, FilePlus, ShieldCheck, AlertTriangle, Clock, History, BrainCircuit, Loader2, Download, Eye, Lock, Trash2 } from "lucide-react";
+import { ArrowLeft, FileText, UploadCloud, Sparkles, CheckCircle2, XCircle, Pencil, MessageSquare, Flag, FilePlus, ShieldCheck, AlertTriangle, Clock, History, BrainCircuit, Loader2, Download, Eye, Lock, Trash2, Cloud, CloudOff } from "lucide-react";
 import { useStore, errorMessage } from "@/lib/store";
 import { Card, Badge, StatusBadge, StatusLabel, AiModeBanner, EngineBadge, SafetyBanner, EmptyState, Btn, PriorityDot } from "@/components/ui";
 import { runAnalysis, checkRequiredDocs, suggestStatus, fmtDate, fmtTime, fmtSize, uid, describeLlmModel, Extraction, CaseStatus, ContradictionItem } from "@/lib/core";
@@ -36,7 +36,7 @@ export default function CaseDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const router = useRouter();
-  const { cases, docs, extractions, recs, audit, config, isManager, addDoc, replaceCaseExtractions, addRec, reviewRec, updateCase, deleteCase, extractFile, analyze, log, notify } = useStore();
+  const { cases, docs, extractions, recs, audit, config, isManager, addDoc, replaceCaseExtractions, addRec, reviewRec, updateCase, deleteCase, extractFile, analyze, log, notify, summaries, summaryStorage, syncSummaries } = useStore();
   const [tab, setTab] = useState<Tab>("overview");
   const [analyzing, setAnalyzing] = useState(false);
   const [uploading, setUploading] = useState(0);
@@ -54,7 +54,13 @@ export default function CaseDetailPage() {
   const caseEx = useMemo(() => extractions.filter(e => e.caseId === id), [extractions, id]);
   const caseRec = useMemo(() => recs.filter(r => r.caseId === id).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0], [recs, id]);
   const caseAudit = useMemo(() => audit.filter(a => a.caseId === id), [audit, id]);
+  const caseSummaries = useMemo(() => summaries.filter(s => s.caseId === id), [summaries, id]);
   const checklist = useMemo(() => checkRequiredDocs(c?.caseType || "Other", caseDocs), [c?.caseType, caseDocs]);
+
+  // Live AI also stores this case's summaries in D1. Loading them here means a
+  // browser that lost its local copy still shows them; a failure keeps the
+  // browser copy and Demo Mode never contacts D1.
+  useEffect(() => { void syncSummaries(id); }, [id, syncSummaries]);
 
   if (!c) return <div className="py-20 text-center"><p className="text-sm text-muted">Case not found.</p><Link href="/cases" className="mt-3 inline-block text-sm font-semibold text-accent">Back to cases</Link></div>;
 
@@ -295,6 +301,18 @@ export default function CaseDetailPage() {
             <div className="mt-2 text-sm font-semibold text-fg">Drag & drop PDF, DOCX, TXT or CSV files here</div>
             <div className="mt-1 text-xs text-muted">or click to browse · up to 10 MB each · text is extracted in your browser — the file is not uploaded anywhere (scanned PDFs need OCR, not yet supported)</div>
           </div>
+          {caseSummaries.length > 0 && (
+            <p className={`flex items-start gap-1.5 text-[11px] ${config.aiMode !== "llm" || summaryStorage === "local" ? "text-ember-100" : "text-muted"}`}>
+              {config.aiMode !== "llm" || summaryStorage === "local" ? <CloudOff size={13} className="mt-px shrink-0" /> : <Cloud size={13} className="mt-px shrink-0" />}
+              <span>
+                {config.aiMode !== "llm"
+                  ? "Demo Mode — these AI summaries were generated earlier and are kept in this browser only. Demo Mode never uses cloud storage."
+                  : summaryStorage === "local"
+                    ? "Cloud summary storage is unavailable — these AI summaries are kept in this browser only. Your documents and case data are unaffected."
+                    : "AI summaries are saved to Cloudflare D1 for this workspace and in this browser. Only the summaries and their cited highlights are stored — never your documents, extracted text or keys."}
+              </span>
+            </p>
+          )}
           {caseDocs.length === 0 ? (
             <EmptyState icon={<FileText size={22} />} title="No documents yet" desc="Upload at least one document, then run AI Analysis to extract facts and generate a recommendation." />
           ) : (
@@ -510,7 +528,8 @@ export default function CaseDetailPage() {
   );
 }
 
-// AI summary of one document, from this browser's workspace (Live AI only).
+// AI summary of one document (Live AI only): read from the workspace, which
+// holds the browser copy and any summaries loaded back from D1.
 function DocSummary({ caseId, docId }: { caseId: string; docId: string }) {
   const { summaries } = useStore();
   const item = summaries.find(s => s.caseId === caseId && s.documentId === docId);

@@ -1,9 +1,15 @@
 import { bindings, defineConfig, defineWorker } from "cf/config";
 
 // Cloudflare Workers deployment (built with vinext — see README "Deploying to
-// Cloudflare"). The Worker serves the app and three stateless API routes
-// (analyze, config, health). Case data, documents, AI summaries and accounts
-// all live in each visitor's browser, so there is no database binding.
+// Cloudflare"). The Worker serves the app and four API routes (analyze, config,
+// health, summaries). Case data, documents, extracted text and accounts live in
+// each visitor's browser. The one exception is the D1 database bound as DB
+// (database "caseclarity-summaries"), which stores ONLY AI document summaries
+// and their cited highlights, scoped to the workspace that generated them.
+// Existing rows are preserved by an additive runtime migration (see
+// db/schema.sql and src/lib/summaries-db.ts). If the binding is missing or
+// unreachable, /api/summaries answers 503 and the app keeps summaries in the
+// browser; Demo Mode never uses D1 at all.
 //
 // ANALYZE_LIMIT is Cloudflare's built-in Workers rate limiter. It caps Live AI
 // at 10 analyses per minute per visitor IP, which protects the AI budget even
@@ -52,6 +58,11 @@ export default defineConfig({
       // in the audit trail.
       LLM_FALLBACK_MODELS: bindings.text("gemini-3.5-flash-lite"),
       ANALYZE_LIMIT: bindings.rateLimit({ namespace: "1001", simple: { limit: 10, period: 60 } }),
+      // AI document summaries only. The existing database and its
+      // document_summaries table are reused; the table is never recreated or
+      // emptied. Every query is scoped by a hash of the visitor's workspace
+      // token, so a case ID alone cannot read another visitor's summaries.
+      DB: bindings.d1({ name: "caseclarity-summaries" }),
     },
   }),
 });

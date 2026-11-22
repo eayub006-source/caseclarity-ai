@@ -10,6 +10,7 @@
 import { AuditEntry, CASE_STATUSES, CaseItem, CaseStatus, ContradictionItem, DocItem, DocStatus, Evidence, Extraction, PRIORITIES, Recommendation, uid } from "./core";
 import { seedAudit, seedCases, seedDocs, seedExtractions, seedRecommendations } from "@/data/demo-data";
 import { dedupeCases } from "./csv";
+import { MAX_SUMMARIES, isWorkspaceToken, newWorkspaceToken, sanitizeSummary, sanitizeTimestamp } from "./summaries";
 import { int, oneOf, str, strList } from "./validate";
 
 // 2: recommendations now carry structured contradictions (with per-side
@@ -24,9 +25,15 @@ export interface Workspace {
   recs: Recommendation[];     // newest first
   audit: AuditEntry[];        // newest first
   // AI document summaries (Live AI only). Optional so workspaces saved before
-  // this field existed still load. Kept in the browser like everything else,
-  // so they are private to each visitor.
+  // this field existed still load. Always kept in the browser; Live AI also
+  // mirrors them to Cloudflare D1 through /api/summaries, scoped by the token
+  // below. A D1 failure never removes the browser copy.
   summaries?: DocSummaryItem[];
+  // A random 256-bit secret minted in this browser and saved with the
+  // workspace. The summaries API stores only its SHA-256 hash, so summaries
+  // are never shared between visitors just because they know a case ID.
+  // Optional so workspaces saved before this field existed still load.
+  workspaceToken?: string;
 }
 
 export interface DocSummaryItem {
@@ -72,7 +79,11 @@ export function loadWorkspace(raw: unknown): Workspace | null {
   if (w.version !== WORKSPACE_VERSION) return null;
   const lists = [w.cases, w.docs, w.extractions, w.recs, w.audit];
   if (!lists.every(Array.isArray)) return null;
-  return w as Workspace;
+  if (w.summaries !== undefined && !Array.isArray(w.summaries)) return null;
+  // A saved workspace may predate the summaries token, or carry a token of the
+  // wrong shape. Drop it rather than sending it anywhere; the store mints one.
+  const { workspaceToken, ...rest } = w;
+  return (isWorkspaceToken(workspaceToken) ? { ...rest, workspaceToken } : rest) as Workspace;
 }
 
 // ---------- Cases ----------
@@ -305,6 +316,20 @@ export function appendAudit(ws: Workspace, caseId: string | null, action: string
 // ---------- AI document summaries ----------
 
 /**
+ * Gives a workspace its D1 isolation token if it does not have a valid one.
+ * Returns the same object when nothing needs to change.
+ */
+export function ensureWorkspaceToken(ws: Workspace, mint: () => string = newWorkspaceToken): Workspace {
+  if (isWorkspaceToken(ws.workspaceToken)) return ws;
+  return { ...ws, workspaceToken: mint() };
+}
+
+/** The AI summaries this workspace holds for one case. */
+export function caseSummaries(ws: Workspace, caseId: string): DocSummaryItem[] {
+  return (ws.summaries ?? []).filter((s) => s.caseId === caseId);
+}
+
+/**
  * Replaces the AI document summaries of one case. Only documents that belong
  * to the case are kept, and text is length-limited like all workspace input.
  */
@@ -326,4 +351,34 @@ export function replaceSummaries(ws: Workspace, caseId: string, list: unknown[],
     clean.push({ caseId, documentId: doc.id, documentName: doc.name, summary, highlights, engine: str(engine, 20) || "llm", createdAt: now });
   }
   return { ...ws, summaries: [...(ws.summaries ?? []).filter((x) => x.caseId !== caseId), ...clean] };
+}
+
+/**
+ * Merges summaries loaded from D1 into the browser copy. It never deletes or
+ * downgrades what is already here: a local summary wins when it is the same
+ * age or newer, and unknown documents are ignored. Used when a case page opens,
+ * so a restored browser still shows its AI summaries.
+ */
+export function mergeSummaries(ws: Workspace, caseId: string, list: unknown[], now = new Date().toISOString()): Workspace {
+  const docs = new Map(ws.docs.filter((d) => d.caseId === caseId).map((d) => [d.id, d]));
+  const byDoc = new Map(caseSummaries(ws, caseId).map((s) => [s.documentId, s]));
+  for (const raw of (Array.isArray(list) ? list : []).slice(0, MAX_SUMMARIES)) {
+    const clean = sanitizeSummary(raw);
+    if (!clean) continue;
+    const doc = docs.get(clean.documentId);
+    if (!doc) continue;
+    const createdAt = sanitizeTimestamp(raw && typeof raw === "object" ? (raw as Record<string, unknown>).createdAt : undefined, now);
+    const existing = byDoc.get(doc.id);
+    if (existing && existing.createdAt >= createdAt) continue;
+    byDoc.set(doc.id, {
+      caseId,
+      documentId: doc.id,
+      documentName: doc.name,
+      summary: clean.summary,
+      highlights: clean.highlights,
+      engine: clean.engine,
+      createdAt,
+    });
+  }
+  return { ...ws, summaries: [...(ws.summaries ?? []).filter((s) => s.caseId !== caseId), ...byDoc.values()] };
 }

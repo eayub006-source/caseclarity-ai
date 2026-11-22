@@ -8,7 +8,7 @@
 |---|---|
 | **Product** | CaseClarity AI — explainable, human-in-the-loop AI case management for small legal-aid nonprofits |
 | **Team · Event** | HACKSMITHS · Build for Campus 2026 |
-| **Stage** | Hackathon prototype — **demo build**: no database, data saved in each visitor's browser, deployed on Cloudflare Workers |
+| **Stage** | Hackathon prototype — **demo build**: case data saved in each visitor's browser, AI document summaries in Cloudflare D1, deployed on Cloudflare Workers |
 | **Last reviewed** | 2026-11-21 |
 | **Companion docs** | [README.md](./README.md) · [PROJECT_STATUS.md](./PROJECT_STATUS.md) · [PROBLEM_STATEMENT.md](./PROBLEM_STATEMENT.md) · [AGENTS.md](./AGENTS.md) |
 
@@ -40,7 +40,7 @@
 - **What it does:** turns long, inconsistent case documents into structured facts and an *explainable* recommendation — reasoning, evidence with document and page citations, a confidence indicator labelled as uncalibrated, missing information, uncertainties and next steps.
 - **Core rule:** the AI never makes a final legal decision. Every recommendation waits for a human to approve, modify or reject it, and every action is written to an append-only audit trail.
 - **Workflow (working end to end):** upload → text extraction (in the browser) → analysis → explainable recommendation → human review → audit trail.
-- **Data:** there is **no database**. The fictional dataset lives in the repository (`src/data/demo-data.ts`). Each visitor's browser keeps its own copy in IndexedDB, so changes survive reloads, visitors never see each other's changes, and *Reset demo data* restores the original.
+- **Data:** case data has **no server-side database**. The fictional dataset lives in the repository (`src/data/demo-data.ts`). Each visitor's browser keeps its own copy in IndexedDB, so changes survive reloads, visitors never see each other's changes, and *Reset demo data* restores the original. The one server-side store is the Cloudflare D1 table `document_summaries` (§6), which holds only AI-generated summaries scoped by a per-workspace token hash.
 - **Demo accounts:** `demo@caseclarity.ai` (Senior Case Worker) and `caseworker@caseclarity.ai` (Case Worker), password `demo1234`, one click on the sign-in page. Sign-ups are stored in the browser with a bcrypt hash.
 - **AI mode:** Demo Mode (deterministic engine, clearly labelled) unless `LLM_API_KEY` is configured on the server. Live AI has been verified end to end against a mock OpenAI-compatible provider (`tests/mock-openai-server.mjs`) with a scripted scenario run (`tests/e2e-live-ai.mjs`) — not yet with a real provider key. Every citation is verified server-side; contradictions must carry two traceable sides and unsupported ones are dropped.
 - **Hosting:** Cloudflare Workers via vinext (Vite-based Next.js). `npm run dev` (Next.js) still works for local development.
@@ -71,8 +71,8 @@
 | CSV import / export | ✅ | RFC 4180 (PapaParse), validation report, duplicate detection |
 | Google Drive import | 🧪 | Labelled "Simulated"; no OAuth or Drive API |
 | Evaluation page | 🧪 | Illustrative placeholder metrics, labelled; workspace totals are live |
-| Persistence | 🟡 | Per browser (IndexedDB). No shared workspace across devices or people |
-| AI document summaries | ✅ | Live AI only; saved in the visitor's browser (`summaries` in the workspace) |
+| Persistence | 🟡 | Case data is per browser (IndexedDB). No shared workspace across devices or people |
+| AI document summaries | ✅ | Live AI only; kept in the workspace (`summaries`) and mirrored to Cloudflare D1, scoped by the SHA-256 of a per-workspace token |
 | Live AI rate limit | ✅ | 10 analyses per minute per visitor (Workers rate-limit binding `ANALYZE_LIMIT`) |
 | OCR, organizations, password reset | ⛔ | See §17 |
 
@@ -127,7 +127,7 @@ flowchart LR
 
 ### Key design decisions
 
-1. **No server state.** All data operations happen in the browser through `useStore()`. The server has three stateless routes; with no LLM key, the only request the app makes is `GET /api/config`.
+1. **No server-side case data.** Every case-data operation happens in the browser through `useStore()`. The server has four routes; the summaries route stores only AI summaries in D1, scoped by the workspace token. With no LLM key, `/api/summaries` is never called.
 2. **Rules as pure functions.** `src/lib/workspace.ts` holds the rules the old API routes enforced — input validation and length limits, case numbering, review locking, append-only audit, cascade delete that keeps audit history — as pure functions returning a new workspace. `store.tsx` applies the result and saves it. They are unit-tested.
 3. **Write-through persistence.** Each change saves the whole workspace to IndexedDB under the key `workspace`. IndexedDB runs transactions on one store in creation order, so the latest state wins. If storage is blocked (private window, disabled site data), the app keeps working in memory and shows one warning.
 4. **Extraction in the browser.** PDF.js and mammoth load on first upload. Files never leave the device; in Demo Mode no document text leaves it either. An `import.meta.env?.SSR` guard lets the Cloudflare server build drop both parsers (Worker bundle ≈ 380 KB gzipped).
@@ -207,6 +207,8 @@ The TypeScript types in `src/lib/core.ts` are the schema. A `Workspace` (`src/li
 | `extractions` | `Extraction[]` | creation order | One fact with provenance: documentId, sourceDoc, sourcePage, sourceSnippet, confidence, category, `verified` |
 | `recs` | `Recommendation[]` | newest first | title, summary, reasoning, confidence, status, engine (`seed`/`demo`/`llm`), evidence, contradictions (structured: field, description, ≥2 evidence sides with value/documentId/page/snippet), missingInfo, uncertainties, nextSteps, `insufficientEvidence`, reviewedBy/At, reviewComment |
 | `audit` | `AuditEntry[]` | newest first | caseId (null for workspace events or deleted cases), actor, action, details, category, timestamp |
+| `summaries` | `DocSummaryItem[]` | creation order | caseId, documentId, documentName, summary, highlights (`text`, `page`, `verified`), engine, createdAt — AI summaries only, mirrored to D1 |
+| `workspaceToken` | string? | — | 256-bit random token minted in the browser; sent to `/api/summaries` as `x-workspace-token`. Only its SHA-256 is stored in D1 |
 
 **IndexedDB** (database `caseclarity-ai`, store `kv`):
 
@@ -216,6 +218,8 @@ The TypeScript types in `src/lib/core.ts` are the schema. A `Workspace` (`src/li
 | `accounts` | `LocalAccount[]` — id, name, email, org, role, `passwordHash` (bcrypt), createdAt |
 | `session` | `{ userId }` of the signed-in account |
 
+**Cloudflare D1** (binding `DB`, database `caseclarity-summaries`, table `document_summaries`): one row per (workspace, case, document) summary — `workspace_id` (sha256 of the token), `case_id`, `document_id`, `document_name`, `summary`, `highlights` (JSON), `engine`, `created_at`. No extracted text, files or keys. The schema is managed additively at runtime (`src/lib/summaries-db.ts`); pre-isolation rows (`workspace_id = NULL`) are preserved but never returned.
+
 **Vocabularies:** case status `awaiting_review`, `in_progress`, `completed`, `missing_docs`, `flagged` · priority `low`, `medium`, `high`, `urgent` · recommendation status `pending`, `approved`, `rejected`, `modified` · audit category `case`, `document`, `ai`, `review`, `integration`, `system` (else `general`) · case types and their required documents in `REQUIRED_DOCS`.
 
 **Rules enforced by `workspace.ts`:** titles and client names are required; strings are trimmed and length-limited; numbers are clamped; new recommendations always start `pending`; approved/rejected recommendations are locked; a modification needs replacement text and keeps the AI's evidence; deleting a case removes its documents, facts and recommendations, keeps its audit history (unlinked) and adds a "Case deleted" entry; CSV imports skip duplicates (client + title, case-insensitive) and count invalid rows.
@@ -224,15 +228,18 @@ The TypeScript types in `src/lib/core.ts` are the schema. A `Workspace` (`src/li
 
 ## 7. API reference
 
-Three stateless routes under `src/app/api/`. Nothing is stored on the server.
+Four routes under `src/app/api/`. Only `/api/summaries` stores anything, and only AI summaries.
 
 | Method and path | Request | Response |
 |---|---|---|
-| `GET /api/health` | — | `{"ok":true}` (liveness only — there is no database) |
+| `GET /api/health` | — | `{"ok":true}` (liveness only — it does not check D1) |
 | `GET /api/config` | — | `{"aiMode":"demo"\|"llm","model":string\|null}` — non-secret flags for honest labelling |
 | `POST /api/analyze` | `{case:{title,clientName,caseType}, documents:[{id,name,extractedText}]}` | `{mode:"llm", model, result}` with verified citations and structured contradictions, or `{mode:"demo", reason}` (no key, LLM error, invalid JSON, timeout, unusable output). `403` cross-site, `413` too large (> 600,000 characters of text), `400` no documents |
+| `GET /api/summaries?caseId=…` | header `x-workspace-token` | `{caseId, summaries, storage:"d1"}` scoped to that workspace token; `401` without a valid token, `503` without the D1 binding |
+| `POST /api/summaries` | header `x-workspace-token`, `{caseId, summaries:[{documentId, documentName, summary, highlights, engine}]}` | `{saved, storage:"d1"}`; replaces only this workspace's rows for the case; 50 summaries / 1,500 chars each / 8 highlights; `400` invalid, `403` cross-site, `413` over 256 KB, `503` no D1 |
+| `DELETE /api/summaries[?caseId=…]` | header `x-workspace-token` | `{deleted, storage:"d1"}` — one case, or every summary this workspace stored |
 
-`/api/analyze` rejects cross-site browser requests (Origin / Sec-Fetch-Site check in `isSameOrigin()`). The browser trims each document so the request never exceeds the prompt budget (`MAX_PROMPT_CHARS`, 60,000 characters).
+`/api/analyze` and `/api/summaries` reject cross-site browser requests (Origin / Sec-Fetch-Site check in `isSameOrigin()`). The browser trims each document so the request never exceeds the prompt budget (`MAX_PROMPT_CHARS`, 60,000 characters). Summary writes are bounded and scoped per workspace; they are not rate-limited and the token is a capability, not authentication (§8).
 
 ---
 
@@ -245,8 +252,10 @@ Three stateless routes under `src/app/api/`. Nothing is stored on the server.
 - **Roles:** `case_worker` (sign-ups, Jordan Lee) cannot delete cases or reset demo data; `senior_case_worker` and `admin` can. The store refuses those actions for case workers, and the UI hides them.
 - **Audit integrity:** the actor and reviewer always come from the signed-in user.
 - **Privacy:** files never leave the device; only extracted text is kept, in the visitor's own browser. In Live AI mode the case's document text is sent to `/api/analyze` and on to the configured LLM provider for that one request.
+- **AI summaries in D1:** only the generated summary, its highlights, the document id/name, the engine and a timestamp are stored. Rows are scoped by the SHA-256 of the browser's workspace token. The token is a capability, not authentication: anyone with browser-profile access (or the token) can read those summaries, and all accounts in one browser share it.
+- **Legacy summary rows:** rows written before isolation have `workspace_id = NULL`; they are preserved but never returned.
 - **Secrets:** `LLM_API_KEY` is read only on the server (`src/lib/server-config.ts`); nothing sensitive uses `NEXT_PUBLIC_*`.
-- **CSRF:** `/api/analyze` blocks cross-site requests.
+- **CSRF:** `/api/analyze` and `/api/summaries` block cross-site requests.
 
 **What it does not do (by design for this build)**
 
@@ -441,12 +450,12 @@ Earlier known issues KI-1 to KI-16 (completeness, ordering, CSV quoting, hardcod
 **Product and AI quality**
 
 - [ ] OCR for scanned PDFs; legacy `.doc`; real DOCX page boundaries; keeping original files.
-- [x] Per-document AI summaries (Live AI), stored privately in each browser.
+- [x] Per-document AI summaries (Live AI), kept in each browser and mirrored to Cloudflare D1, scoped per workspace.
 - [ ] Contradictions as first-class records; content-based document classification.
 
 **Back end (when a shared, persistent workspace is needed again)**
 
-- [ ] Bring back server-side storage and authentication — restore from `34dd6c0` (PostgreSQL), or move to Cloudflare D1 with the same rules (`src/lib/workspace.ts` is storage-agnostic).
+- [ ] Bring back server-side case storage and authentication — restore from `34dd6c0` (PostgreSQL), or move the workspace to D1 with the same rules (`src/lib/workspace.ts` is storage-agnostic). The D1 summary table already exists but is not case storage and its workspace token is not authentication.
 - [ ] Organizations, password reset, admin screen for roles, audit immutability on the server.
 
 **Integrations**
@@ -471,3 +480,4 @@ Earlier known issues KI-1 to KI-16 (completeness, ordering, CSV quoting, hardcod
 7. **Release pass** (2026-11-20) — Next.js 16.4.6 (security advisories), browser walkthrough with mobile and timezone fixes, CI; 46 tests. Last PostgreSQL version: `34dd6c0`.
 8. **Demo build for Cloudflare** (2026-11-21) — PostgreSQL removed: the dataset lives in `src/data/demo-data.ts` and each browser keeps its own copy in IndexedDB; workspace rules moved to pure functions (`src/lib/workspace.ts`); browser-local accounts with bcrypt; one-click demo accounts for both roles; text extraction moved into the browser; `/api/analyze` made stateless; Cloudflare Workers deployment via vinext (React 19.3.1, `nodejs_compat`, opt-in secrets); production dependencies audit-clean; 56 tests.
 9. **Live AI reliability pass** (2026-11-21) — contradictions became structured records with one traceable evidence item per side (demo engine, LLM validation and UI); added an explicit insufficient-evidence flag with confidence capping; strengthened the system prompt (verbatim snippets, ≥2 cited sides per contradiction, no legal conclusions); provider call extracted to `postChatCompletion()` with a configurable timeout and explicit 401/429/5xx/network handling; added route-level and workflow tests plus a mock provider (`tests/mock-openai-server.mjs`) and a 12-scenario scripted run (`tests/e2e-live-ai.mjs`); 85 tests.
+10. **D1 summary restoration** (2026-11-22) — AI document summaries are persisted again in Cloudflare D1 (`DB`, database `caseclarity-summaries`) through `GET/POST/DELETE /api/summaries`, without reverting the browser-local workspace. Isolation is per workspace: the browser mints a 256-bit token and D1 stores only its SHA-256 hash, so a case ID alone cannot read or overwrite another visitor's summaries. Existing rows and the existing table are preserved by an additive runtime migration; pre-isolation rows stay quarantined (`workspace_id IS NULL`). The browser copy remains the fallback, Demo Mode never touches D1, and the UI labels local-only storage. 144 tests; verified save/read/isolation and migration in workerd with a local D1 database.
