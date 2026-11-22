@@ -62,7 +62,7 @@ export default defineConfig({
       // document_summaries table are reused; the table is never recreated or
       // emptied. Every query is scoped by a hash of the visitor's workspace
       // token, so a case ID alone cannot read another visitor's summaries.
-      DB: bindings.d1({ name: "caseclarity-summaries" }),
+      DB: bindings.d1({ name: "caseclarity-summaries", id: "188ba1dc-644b-4648-b240-35916a55adff" }),
     },
   }),
 });
