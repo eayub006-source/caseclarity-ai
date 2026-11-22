@@ -23,10 +23,10 @@ CaseClarity AI helps **legal-aid workers** handle client cases faster.
 
 This is the **demo build**, made to be easy to host on **Cloudflare**:
 
-- **No database.** The fictional demo data is a file inside the project: `src/data/demo-data.ts`.
+- **Case data has no database.** The fictional demo data is a file inside the project: `src/data/demo-data.ts`. The only server-side store is a Cloudflare D1 table holding AI document summaries (no documents, text, cases or accounts), scoped to each browser workspace.
 - **Each visitor gets their own copy**, saved in their own browser. Changes (new cases, uploads, reviews) stay after a reload, and judges never see each other's changes.
 - **Reset demo data** (sidebar, senior case workers) puts everything back to the original.
-- **Documents never leave the computer** — the text is read inside the browser.
+- **Documents never leave the computer** — the text is read inside the browser. When Live AI runs, only the generated summaries are saved to D1, alongside the browser copy.
 - The earlier version with a **PostgreSQL** database and server logins is saved in git history (commit `34dd6c0`) if a shared workspace is needed later.
 
 **Logins** (one click on the sign-in page, password `demo1234`):
@@ -118,12 +118,12 @@ New accounts can be created on the sign-up page; they are saved in that browser 
 |---|---|
 | 4 | OCR so scanned PDFs / photos can be read |
 | 5 | Old `.doc` Word files; real page numbers for Word files; keeping the original files |
-| 6 | A smarter demo engine (AI document summaries are done) |
+| 6 | A smarter demo engine (AI document summaries are done and saved to D1) |
 
 ### 🟡 When a shared workspace is needed
 | # | Task |
 |---|---|
-| 7 | Bring back a server database (the PostgreSQL version in git, or Cloudflare D1) so a team shares one workspace |
+| 7 | Bring back a server database for **case data** (the PostgreSQL version in git, or Cloudflare D1) so a team shares one workspace. D1 already holds AI summaries, but that is not case storage |
 | 8 | Real server-side logins, organizations/teams, password reset, admin screen for roles |
 
 ### 🔵 Integrations
@@ -147,6 +147,6 @@ npm install
 npm run dev                 # open http://localhost:3000/login and click a demo account
 ```
 
-No database needed. To deploy: `npx cf auth login` then `npm run deploy`.
+No database needed for Demo Mode or case data. Deploying needs the D1 database `caseclarity-summaries` (for AI summaries) plus the LLM secrets: `npx cf auth login` then `npm run deploy`.
 
 Full steps are in [README.md](./README.md#quick-start).

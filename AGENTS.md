@@ -19,7 +19,7 @@ These protect the product's core promise — *explainable, human-controlled AI* 
 6. **Secrets stay on the server.** Read `process.env.*` only in `src/lib/server-config.ts` and route handlers. Never use a `NEXT_PUBLIC_` prefix for secrets. Never commit `.env` or `.dev.vars`.
 7. **All data changes go through the store and the workspace rules.** Pages call `useStore()`; the store calls the pure functions in `src/lib/workspace.ts`. Never write to IndexedDB from a page, and never bypass a rule (validation, locked reviews, append-only audit).
 8. **The demo dataset lives in `src/data/demo-data.ts`.** Fictional data only — never add real client documents to it, to tests or to fixtures.
-9. **Keep the server stateless and small.** The Worker has three routes (`analyze`, `config`, `health`). Do not add server-side storage without a deliberate decision (see CONTEXT.md §17 for the options). Keep heavy libraries out of the server bundle.
+9. **Keep the server small, and keep case data out of it.** The Worker has four routes (`analyze`, `config`, `health`, `summaries`). The only server-side records are AI document summaries in Cloudflare D1, scoped by a workspace token; documents, extracted text, cases, accounts and audit entries must never be sent there. Do not add server-side case storage without a deliberate decision (see CONTEXT.md §17). Keep heavy libraries out of the server bundle.
 10. **Accounts are not security.** Browser-local accounts identify users for the audit trail. Never describe them as protecting data, and never store a password without `hashPassword()`.
 11. **Keep the build green.** Run the validation sequence (§8) before every commit — both the Next.js and the Cloudflare builds.
 
@@ -33,17 +33,20 @@ Browser (all pages are client components)
                ├─► rules: src/lib/workspace.ts (pure functions)  ──► saved to IndexedDB (src/lib/browser-db.ts)
                ├─► accounts: src/lib/accounts.ts (demo accounts + bcrypt-hashed local accounts)
                ├─► extractFile(): src/lib/extract.ts (PDF.js / mammoth, loaded on demand, in the browser)
-               └─► analyze(): POST /api/analyze (only when Live AI is configured)
+               ├─► analyze(): POST /api/analyze (only when Live AI is configured)
+               └─► syncSummaries()/analyze(): GET/POST /api/summaries (Live AI summaries, token-scoped)
   case page ──► runAnalysis() (src/lib/core.ts) in Demo Mode or when Live AI fails
   first visit / "Reset demo data" ──► demoWorkspace() from src/data/demo-data.ts
 
-Server (Cloudflare Worker via vinext, or next dev) — stateless
+Server (Cloudflare Worker via vinext, or next dev)
   GET /api/config · GET /api/health · POST /api/analyze ──► OpenAI-compatible LLM (only if LLM_API_KEY is set)
+  GET/POST/DELETE /api/summaries ──► Cloudflare D1 (binding DB) — AI summaries only
 ```
 
 - **Rendering:** every page starts with `"use client"`. The root layout (`src/app/layout.tsx`, a server component) wraps the app in `StoreProvider`.
 - **Workspace:** pages that need a sign-in live in `src/app/(app)/`. Its `layout.tsx` waits for `ready` (saved sign-in and workspace loaded) and shows "Sign in required" when there is no user.
 - **Persistence:** each change saves the whole workspace to IndexedDB (key `workspace`). Accounts and the current sign-in use the keys `accounts` and `session`. If storage is blocked, the app keeps working in memory and warns once.
+- **AI summaries:** the browser copy is authoritative. Live AI mirrors it to D1 through `/api/summaries` and loads it back when a case opens, scoped by the workspace token. A failed call keeps the browser copy and the Documents tab says "kept in this browser only". Demo Mode never calls the endpoint.
 - **Analysis:** `analyze()` returns `{mode:"demo"}` immediately in Demo Mode; otherwise `/api/analyze` returns `mode: "llm"` with verified citations or `mode: "demo"` with a reason, and the case page falls back to `runAnalysis()`.
 - **Two toolchains, one app:** `next dev` / `next build` for local development; vinext (Vite) builds the same `src/app` into a Cloudflare Worker (`*:cloudflare` scripts, `npm run deploy`).
 
@@ -128,7 +131,9 @@ DevTools → Application → IndexedDB → `caseclarity-ai` → `kv` (keys `work
 | Change the LLM prompt, provider call or validation | `src/lib/llm.ts` (`SYSTEM_PROMPT`, `buildPrompt`, `postChatCompletion`, `validateLlmResult`) |
 | Change document parsing | `src/lib/extract.ts` |
 | Change CSV parsing or import rules | `src/lib/csv.ts` (dedupe is applied in `importCases()` in `workspace.ts`) |
-| Add a server endpoint | `src/app/api/<name>/route.ts` — stateless; read config only through `src/lib/server-config.ts` |
+| Add a server endpoint | `src/app/api/<name>/route.ts` — no case data; read config only through `src/lib/server-config.ts` |
+| Change AI summary storage or its API | `src/lib/summaries.ts` (shared contract + browser client), `src/lib/summaries-db.ts` (D1), `src/app/api/summaries/route.ts` |
+| Inspect or change the D1 table | `db/schema.sql` and the additive runtime migration in `src/lib/summaries-db.ts` — never drop the table or existing rows |
 | Change Cloudflare settings | `cloudflare.config.ts` |
 | Add a reusable UI element | `src/components/ui.tsx` |
 | Add tests | `tests/<area>.test.ts` |
@@ -229,7 +234,9 @@ export async function POST(req: Request) {
 
 **Change CSV import or export** — use `parseCasesCSV`, `buildCasesFromRows`, `dedupeCases` and `toCSV`. Keep the import report honest — nothing may be dropped silently.
 
-**Bring back a shared backend** — keep `workspace.ts` as the rules layer, add a storage adapter on the server (e.g. Cloudflare D1, or the PostgreSQL version at commit `34dd6c0`), and replace `apply()`/IndexedDB in the store with API calls. Restore server-side authentication before calling it secure.
+**Change AI summary persistence** — keep the browser copy (`workspace.summaries` via `replaceSummaries`/`mergeSummaries`) and the D1 mirror independent: a D1 failure must never lose the browser copy or block Demo Mode. Validate everything at the route edge with the helpers in `src/lib/summaries.ts`, always scope SQL by `workspace_id`, and add cases to `tests/summaries.test.ts` (save/read, isolation, invalid payloads, cross-origin, missing binding). Any schema change must be additive and must preserve existing rows.
+
+**Bring back a shared backend** — keep `workspace.ts` as the rules layer, add a storage adapter on the server (e.g. Cloudflare D1, or the PostgreSQL version at commit `34dd6c0`), and replace `apply()`/IndexedDB in the store with API calls. Restore server-side authentication before calling it secure. The existing summaries table is not a template for case storage: its workspace token is a capability, not a user session.
 
 ### 7.3 Gotchas
 
@@ -240,6 +247,8 @@ export async function POST(req: Request) {
 - Re-running an analysis replaces the case's facts and adds a new recommendation; older recommendations remain and the newest one is displayed.
 - Tests are excluded from `tsconfig.json`; Vitest compiles them itself.
 - Mode labels come from `useStore().config` (`GET /api/config`) and each recommendation's `engine` (`seed` | `demo` | `llm`).
+- `npm run dev` has no D1 binding, so `/api/summaries` answers `503` and summaries stay local; use `npm run dev:cloudflare` or `npm run preview:cloudflare` to exercise D1 (local state lives in `.cloudflare/state/`).
+- The summaries table is migrated additively at runtime (`PRAGMA table_info` then `ALTER TABLE … ADD COLUMN`). Rows written before isolation have `workspace_id = NULL` and are intentionally invisible to every visitor; never "fix" that by matching on `case_id` alone.
 
 ### 7.4 Definition of done
 
@@ -257,7 +266,7 @@ export async function POST(req: Request) {
 Run these from the project root before every commit (CI runs the same):
 
 ```bash
-npm test                     # 85 tests — all must pass
+npm test                     # 144 tests — all must pass
 npm run typecheck            # next typegen + tsc --noEmit
 npm run lint                 # ESLint (0 problems)
 npm run build                # Next.js build
@@ -270,6 +279,8 @@ npm run build:cloudflare     # Cloudflare Worker build
 curl -s localhost:3000/api/health          # {"ok":true}
 curl -s localhost:3000/api/config          # {"aiMode":"demo","model":null} without a key
 curl -s -X POST localhost:3000/api/analyze -H "Origin: https://evil.example" -d '{}'   # 403
+curl -s "localhost:3000/api/summaries?caseId=c6"                                        # 401 (token required)
+curl -s -o /dev/null -w '%{http_code}\n' -G localhost:3000/api/summaries --data-urlencode caseId=c6 -H "x-workspace-token: $(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')"   # 503 on next dev, 200 on the Worker
 ```
 
 **UI check:** sign in with a demo account → open CC-2026-003 → Recommendation tab → Approve with a comment → the decision appears on the case's Audit tab and on `/audit` → reload: it is still there → *Reset demo data* restores the dataset. Also check a phone-width window (390 px) for horizontal scrolling.

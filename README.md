@@ -11,7 +11,7 @@ Built by **Team HACKSMITHS** for **HACKSMITHS — Build for Campus 2026**
 
 [![Demo deployment](https://img.shields.io/badge/demo_deployment-link-0B7285?logo=cloudflare&logoColor=white)](https://caseclarity-ai.eayub006.workers.dev)
 [![CI](https://github.com/eayub006-source/caseclarity-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/eayub006-source/caseclarity-ai/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-112_passing-2E7D32)](https://github.com/eayub006-source/caseclarity-ai/tree/main/tests)
+[![Tests](https://img.shields.io/badge/tests-144_passing-2E7D32)](https://github.com/eayub006-source/caseclarity-ai/tree/main/tests)
 [![License](https://img.shields.io/badge/license-none-lightgrey)](#license)
 
 [![Status](https://img.shields.io/badge/status-browser_local_demo-6B7280)](#project-state-demo-history-and-production-target)
@@ -36,9 +36,10 @@ Built by **Team HACKSMITHS** for **HACKSMITHS — Build for Campus 2026**
 > for a qualified legal professional. Every case, client, document and metric in the demo is fictional.
 > Confidence scores are uncalibrated heuristics, not probabilities.
 >
-> **Where this project stands.** The repository currently runs as an **interim browser-local demo**:
-> case data, accounts and sessions live in each visitor's IndexedDB and there is no database.
-> PostgreSQL is the **intended production backend**. A complete PostgreSQL + Drizzle ORM implementation
+> **Where this project stands.** The repository runs as an **interim browser-local demo**: case data,
+> accounts and sessions live in each visitor's IndexedDB. The one server-side data store is a
+> **Cloudflare D1** table that holds only AI-generated document summaries and their cited highlights,
+> scoped to the visitor's workspace. PostgreSQL is the **intended production backend**. A complete PostgreSQL + Drizzle ORM implementation
 > is preserved in Git history at commit `34dd6c0` and is the verified historical reference for the
 > intended production architecture's schema, API routes and authentication. The final production schema
 > still requires engineering review. The planned return to PostgreSQL through Cloudflare
@@ -130,11 +131,11 @@ path requires the model to say so, and the recommendation is labelled as insuffi
 | **AI recommendations** | One pending recommendation per analysis with reasoning, cited evidence, contradictions, missing information, uncertainties, next steps and engine label. Re-running analysis replaces the case's facts and adds a new recommendation. |
 | **Human review workflow** | Approve (marks the case completed), modify (requires replacement text, keeps the AI's original evidence), reject, add a comment, request documents, or flag for investigation. Approved and rejected recommendations are locked. |
 | **Audit trail** | Per-case timeline and a global searchable timeline with category filters; CSV export. Records actor, action, details, category and timestamp. |
-| **AI document summaries** | On the Live AI path, a short summary plus cited highlights per document, displayed on the case's Documents tab and stored in the visitor's browser. |
+| **AI document summaries** | On the Live AI path, a short summary plus cited highlights per document, displayed on the case's Documents tab. They are kept in the visitor's browser and mirrored to Cloudflare D1, scoped by a per-workspace token hash — never by case ID alone. |
 | **CSV import and export** | RFC 4180 parsing (PapaParse), tolerant column mapping, mixed-date handling, duplicate detection (client + title), an import report, a downloadable sample CSV, and export of cases and audit events. |
 | **Demo Mode and Live AI** | Both paths exist and are labelled everywhere (mode badge, per-recommendation engine badge, audit wording). Demo Mode needs no API key and makes no provider call. |
 | **Roles** | `case_worker`, `senior_case_worker` and `admin`; only the last two can delete cases or reset demo data. |
-| **Cloudflare deployment** | Builds and serves the app plus three stateless API routes from a Cloudflare Worker via `vinext`. No database binding is configured in this demo. |
+| **Cloudflare deployment** | Builds and serves the app plus four API routes from a Cloudflare Worker via `vinext`. The only storage binding is D1 (`DB`) for AI document summaries; case data never leaves the browser. |
 
 ### Simulated or illustrative features
 
@@ -151,10 +152,11 @@ These are **not** working integrations or measured results, and the interface sa
 ### Not implemented
 
 OCR for scanned PDFs · legacy `.doc` files · real page boundaries for DOCX · keeping the original
-uploaded files · a shared workspace across devices or team members · server-side sessions and database
-persistence (the historical PostgreSQL implementation only) · password reset · organisation
-administration · real Google Drive OAuth · server-enforced audit immutability · committed end-to-end
-browser tests · measured evaluation results.
+uploaded files · a shared workspace across devices or team members · server-side sessions and
+PostgreSQL-backed case persistence (the historical PostgreSQL implementation only) · password reset ·
+organisation administration · real Google Drive OAuth · server-enforced audit immutability · committed
+end-to-end browser tests · measured evaluation results. Cloudflare D1 stores AI document summaries only;
+it is not a case database.
 
 ## How it works
 
@@ -278,14 +280,15 @@ Three distinct things are easy to confuse in this repository. They are not inter
 
 | Layer | What it is | Status |
 |---|---|---|
-| **Current implementation** (baseline commit `f236509`) | Next.js + React workspace where every case, account, session and audit entry lives in the visitor's IndexedDB; three stateless API routes; optional Cloudflare Worker deployment via `vinext` | **Interim demo.** This is the checked-out baseline implementation. There is no database. |
+| **Current implementation** | Next.js + React workspace where every case, account, session and audit entry lives in the visitor's IndexedDB; four API routes; Cloudflare D1 for AI document summaries only; optional Cloudflare Worker deployment via `vinext` | **Interim demo.** Case data remains browser-local; the only server-side records are AI summaries. |
 | **Historical implementation** (commit `34dd6c0`) | Next.js + PostgreSQL 15 + Drizzle ORM, server-side sessions, bcrypt accounts, authenticated REST API, seven tables | **Previously implemented and verified in Git history.** It is a historical reference for the intended production architecture, not a production-readiness claim; its schema, API and authentication design require engineering review before production use. It is not the code in the working tree. |
 | **Intended production architecture** | PostgreSQL behind Cloudflare Hyperdrive, server-side sessions, authenticated API, shared workspace | **Planned.** No Hyperdrive binding, PostgreSQL connection, migration or production database exists in this repository. |
 
-**Do not read the demo as the product architecture.** "No database" is a deliberate property of the
-interim build, not the intended end state. Equally, the PostgreSQL implementation at `34dd6c0` is a
-historical reference, not a running service: its files (`src/db/schema.ts`, `src/db/index.ts`,
-`drizzle.config.ts`, the authenticated route handlers) are absent from the baseline commit `f236509`.
+**Do not read the demo as the product architecture.** Browser-local case data and the single-purpose D1
+summary table are deliberate properties of the interim build, not the intended end state. Equally, the
+PostgreSQL implementation at `34dd6c0` is a historical reference, not a running service: its files
+(`src/db/schema.ts`, `src/db/index.ts`, `drizzle.config.ts`, the authenticated route handlers) are absent
+from the current tree.
 
 The migration path is documented in [Limitations and future work](#limitations-and-future-work):
 restore the `34dd6c0` schema, add a storage adapter, reintroduce server-side authentication, and put
@@ -306,6 +309,7 @@ demo**. The historical PostgreSQL stack and the planned production stack follow 
 | Styling | Tailwind CSS v4 with `@tailwindcss/postcss` | 4.1.17 |
 | Icons | lucide-react | ^1.73.0 |
 | Browser storage | IndexedDB, no wrapper library (`src/lib/browser-db.ts`) | Web API |
+| AI summary storage | Cloudflare D1, binding `DB` (database `caseclarity-summaries`), prepared statements only | D1 / SQLite |
 | PDF extraction | `unpdf` (Mozilla PDF.js) | ^1.9.1 |
 | DOCX extraction | `mammoth` browser build | ^1.13.0 |
 | CSV | `papaparse` | ^5.7.1 |
@@ -317,8 +321,9 @@ demo**. The historical PostgreSQL stack and the planned production stack follow 
 | AI integration | Any OpenAI-compatible Chat Completions API, called with `fetch` (no SDK) | — |
 | CI | GitHub Actions (Node 22) | — |
 
-The current demo has **no ORM, no SQL client and no database driver**. Node.js 22 or newer is required
-for tooling (CI pins Node 22; the `cf` CLI warns below 22.23.0).
+The current demo has **no ORM and no general-purpose SQL client**; the only database access is D1's
+prepared-statement API in `src/lib/summaries-db.ts`, used solely by `/api/summaries`. Node.js 22 or newer
+is required for tooling (CI pins Node 22; the `cf` CLI warns below 22.23.0).
 
 ### Historical stack at commit `34dd6c0`
 
@@ -342,11 +347,11 @@ Schema and client files: `src/db/schema.ts` and `src/db/index.ts`; tooling: `dri
 
 | Layer | Intended technology | Status |
 |---|---|---|
-| Database | PostgreSQL, using the seven-table schema from `34dd6c0` as the reference | Planned; no database exists in this repository |
+| Database | PostgreSQL, using the seven-table schema from `34dd6c0` as the reference | Planned; no PostgreSQL database exists in this repository (the only database is D1 for AI summaries) |
 | Connection pooling / caching | Cloudflare Hyperdrive in front of PostgreSQL | Planned; no Hyperdrive binding or configuration exists |
 | ORM | Drizzle ORM, restoring the `34dd6c0` schema and `drizzle-kit` workflow | Planned; no migration has been written |
 | Authentication | Server-side sessions and bcrypt, restoring the `34dd6c0` design | Planned; the current demo uses browser-local accounts |
-| Hosting | Cloudflare Workers (current demo deployment target) | Current demo only; no database is bound |
+| Hosting | Cloudflare Workers (current demo deployment target) | Current demo only; the only binding is D1 for AI summaries |
 
 No version, provider region, database host, credential or Hyperdrive configuration is asserted here,
 because none is defined in the repository.
@@ -364,27 +369,36 @@ flowchart TB
         STORE --> EXT["Browser extraction: unpdf · mammoth"]
         UI --> DEMO["Local deterministic demo analysis"]
     end
-    subgraph WORKER["Current demo: stateless Cloudflare Worker"]
+    subgraph WORKER["Current demo: Cloudflare Worker"]
         ROUTES["POST /api/analyze · GET /api/config · GET /api/health"]
+        SUMS["GET / POST / DELETE /api/summaries"]
         LLM["Prompt · retries · citation verification"]
         ROUTES --> LLM
     end
+    D1[("Cloudflare D1<br/>AI summaries only")]
     PROVIDER["External OpenAI-compatible AI provider<br/>outside the Worker"]
     STORE -. "Live AI only: case fields + extracted text" .-> ROUTES
+    STORE -. "Live AI summaries + workspace token" .-> SUMS
+    SUMS -. "parameterised SQL, scoped by token hash" .-> D1
     UI -. "reads mode for badge" .-> ROUTES
     LLM -. "HTTPS + Bearer key" .-> PROVIDER
 ```
 
 **Current demo boundaries:**
 
-1. **Persistence is browser-local.** Cases, documents, extracted text, facts, recommendations, summaries,
-   accounts, session identity and audit entries are stored in each visitor's IndexedDB. There is no
-   database, server-side session or shared workspace in the current tree.
-2. **The Worker is stateless.** It serves the app and three JSON routes. For Live AI it holds the provider
-   key, builds a prompt, calls the provider, verifies citations and returns JSON; it does not persist the
-   workspace.
-3. **Live AI is the data-flow exception.** When enabled, the case fields and extracted text for that
-   analysis are sent to `/api/analyze`, then to the configured AI provider. Demo Mode analysis is local.
+1. **Case data is browser-local.** Cases, documents, extracted text, facts, recommendations, accounts,
+   session identity and audit entries live in each visitor's IndexedDB. There is no server-side case
+   store and no shared workspace in the current tree.
+2. **AI summaries are the one server-side record.** The browser workspace is authoritative, and Live AI
+   mirrors each case's summaries to Cloudflare D1 through `/api/summaries`. Every row is scoped by the
+   SHA-256 of a random token kept in that browser, so a case ID alone cannot read another visitor's
+   summaries. If D1 is missing or a call fails, the browser copy is used and the UI says so.
+3. **The Worker holds no case data.** It serves the app and four JSON routes. For Live AI it holds the
+   provider key, builds a prompt, calls the provider, verifies citations and returns JSON. The summaries
+   route stores nothing except the summary fields listed above.
+4. **Live AI is the other data-flow exception.** When enabled, the case fields and extracted text for that
+   analysis are sent to `/api/analyze`, then to the configured AI provider. Demo Mode analysis is local
+   and never contacts D1.
 
 The intended server-backed production direction changes this boundary:
 
@@ -501,11 +515,11 @@ in the current demo.
 | Documents and extracted text | Browser IndexedDB | Key `workspace` → `docs[]`; pages are joined with `\f` to preserve page boundaries. |
 | Facts and extractions | Browser IndexedDB | `workspace.extractions[]` with source document, page, snippet, confidence, category and verification flag. |
 | Recommendations and review decisions | Browser IndexedDB | `workspace.recs[]` with evidence, contradictions, status, reviewer, comment and engine. |
-| AI document summaries and highlights | Browser IndexedDB | `workspace.summaries[]`, created by Live AI. |
+| AI document summaries and highlights | Browser IndexedDB **and** Cloudflare D1 | `workspace.summaries[]` is the working copy. Live AI mirrors it to `document_summaries` (document id and name, summary, highlights, engine, timestamp) scoped by `sha256(workspace token)`. No extracted text, files or keys. |
 | Audit trail | Browser IndexedDB | `workspace.audit[]`; deletions keep history and unlink the case. |
 | Local accounts | Browser IndexedDB | `accounts` key includes email, role, org and bcrypt hash; the password is not stored. |
 | Signed-in session | Browser IndexedDB | `session` key stores `{ userId }`; this is not a server-authenticated session. |
-| Server-side persistence | None | Current routes do not store workspace state. |
+| Server-side persistence | Cloudflare D1 (summaries only) | `/api/summaries` reads and writes AI summaries. No case, document, account or audit record is stored server-side. |
 | PostgreSQL / Hyperdrive | None in current tree | No `src/db/`, database driver, database binding or Hyperdrive configuration. |
 
 **Implementation notes** (`src/lib/browser-db.ts`, `src/lib/workspace.ts`):
@@ -521,38 +535,75 @@ in the current demo.
   trail. Sign-in identifies the actor but does not isolate data.
 - First visit seeds six fictional cases, 19 documents, 20 curated facts, six sample recommendations and
   14 audit events.
+- **Summary isolation:** the browser mints a 256-bit workspace token (`ensureWorkspaceToken()`), keeps it
+  in `workspace.workspaceToken`, and sends it in the `x-workspace-token` header. D1 stores only
+  `sha256:<hex>` of it as `workspace_id`; every `SELECT`, `INSERT` and `DELETE` is scoped by that value.
+  `GET /api/summaries?caseId=…` without the token returns `401`.
+- **D1 failures never lose data.** If the binding is missing (`503`), the request fails, or the browser is
+  offline, the summary stays in IndexedDB and the Documents tab says "kept in this browser only". Demo
+  Mode never calls the summaries API.
+- **Existing rows are preserved.** The runtime migration is additive (`CREATE TABLE IF NOT EXISTS`,
+  `PRAGMA table_info`, `ALTER TABLE … ADD COLUMN workspace_id`, indexes). Rows written before isolation
+  existed have `workspace_id = NULL`: they are kept but are not returned to any visitor. See
+  [`db/schema.sql`](db/schema.sql).
+- `npm run dev` (plain Next.js) has no D1 binding, so summaries there are browser-only by design; use
+  `npm run dev:cloudflare` or a deployment with the `DB` binding to exercise D1.
 
 ### Intended server-side persistence
 
 When server-side persistence returns, data will no longer be confined to the visitor's browser. The
 intended architecture is a shared PostgreSQL-backed workspace, using the verified seven-table schema at
 [`34dd6c0`](#historical-postgresql-implementation-commit-34dd6c0) as the reference and Cloudflare
-Hyperdrive as the planned connection layer. This is **not implemented**: there is no database or
-Hyperdrive binding, no current database schema, and no live server-side data store. Retention, tenancy,
-backup, deletion and operational policies must be designed and documented before production use.
+Hyperdrive as the planned connection layer. This is **not implemented**: there is no PostgreSQL
+connection, no Hyperdrive binding, no server-side case schema and no live server-side case store.
+Retention, tenancy, backup, deletion and operational policies must be designed and documented before
+production use. The existing D1 summary table is a separate, narrow store and does not change this.
 
 The historical schema mapped users, cases, documents, extractions, recommendations, sessions and audit
-logs to relational records. It does not mean that current demo data is uploaded or synchronized. There
-is no `/api/summaries` route in the current codebase.
+logs to relational records. It does not mean that current demo data is uploaded or synchronized. The
+Cloudflare D1 binding in the current tree is a narrow exception for AI summaries only; it is not a case
+database, has no user table and is not the production persistence design.
 
 ## API reference
 
 ### Current demo API
 
-The current demo at baseline commit `f236509` exposes three stateless routes under `src/app/api/`.
-They return JSON and do not persist case data. They are separate from the authenticated PostgreSQL API
-documented in the historical section above.
+The current demo exposes four JSON routes under `src/app/api/`. Only `/api/summaries` persists anything,
+and only AI summaries. They are separate from the authenticated PostgreSQL API documented in the
+historical section above.
 
 | Method | Endpoint | Purpose |
 |---|---|---|
 | `GET` | `/api/health` | Liveness probe; no database check. |
 | `GET` | `/api/config` | Non-secret runtime AI mode/model for UI labeling. |
 | `POST` | `/api/analyze` | Live AI analysis of submitted case fields and extracted text; citations are checked server-side. |
+| `GET`, `POST`, `DELETE` | `/api/summaries` | Read, replace or delete this workspace's AI document summaries in Cloudflare D1. |
 
 `GET /api/health` returns `200` with `{"ok": true}`. `GET /api/config` returns the active AI mode, for
 example `{ "aiMode": "demo", "model": null }`. `aiMode` is `"llm"` when `LLM_API_KEY` is configured,
-otherwise `"demo"`; no secret is returned. Neither route checks PostgreSQL because the current demo
-has no database.
+otherwise `"demo"`; no secret is returned. Neither route touches D1.
+
+#### `/api/summaries`
+
+All methods require the `x-workspace-token` header (the random token minted in the browser) and pass the
+same-origin check. Without a valid token they return `401`; cross-site requests return `403`.
+
+| Method | Query | Body | Response |
+|---|---|---|---|
+| `GET` | `caseId` (required) | — | `{ caseId, summaries: [{ documentId, documentName, summary, highlights, engine, createdAt }], storage: "d1" }` |
+| `POST` | — | `{ caseId, summaries: [{ documentId, documentName, summary, highlights, engine }] }` | `{ saved, storage: "d1" }` |
+| `DELETE` | `caseId` (optional; omit to delete all of this workspace's summaries) | — | `{ deleted, storage: "d1" }` |
+
+- Limits: 50 summaries per request, 1,500 characters per summary, 8 highlights per summary and 300
+  characters per highlight; the body is capped at 256 KB. Entries that fail validation are dropped, and
+  a request with none left returns `400`.
+- `POST` replaces only this workspace's rows for that case. Other workspaces' rows for the same case ID
+  are untouched.
+- Error codes: `workspace_token_required` (401), `cross_site` (403), `invalid_case_id` /
+  `invalid_summaries` (400), `body_too_large` (413), `d1_unavailable` (503), `d1_schema` / `d1_error`
+  (500). Database internals are logged in the Worker, never returned.
+- Not stored: original files, extracted text, case records, accounts, keys. The workspace token itself is
+  never stored — only its SHA-256 hash.
 
 ### `POST /api/analyze`
 
@@ -626,7 +677,8 @@ The local limiter is absent during local development.
 
 - **Node.js 22 or newer** (CI uses Node 22; `cf` warns below 22.23.0) and npm 10+
 - Git
-- No database, no Docker and no API key are required — the app starts in Demo Mode
+- No database, no Docker and no API key are required — the app starts in Demo Mode. Plain `npm run dev`
+  has no D1 binding, so AI summaries there stay in the browser (`/api/summaries` answers `503`).
 
 ### Steps
 
@@ -663,15 +715,32 @@ npm run preview:cloudflare  # run the built Worker locally with Vite preview
 ```
 
 For the local Worker preview, copy `.dev.vars.example` to `.dev.vars` (gitignored) if you want Live AI;
-leave `LLM_API_KEY` empty to stay in Demo Mode.
+leave `LLM_API_KEY` empty to stay in Demo Mode. The Cloudflare toolchain provisions a **local** D1
+database for the `DB` binding under `.cloudflare/state/`, so `/api/summaries` can be exercised without a
+Cloudflare account:
+
+```bash
+TOKEN=$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')
+curl -s localhost:3001/api/summaries?caseId=c6                      # 401 — token required
+curl -s localhost:3001/api/summaries?caseId=c6 -H "x-workspace-token: $TOKEN"   # {"summaries":[]...}
+curl -s -X POST localhost:3001/api/summaries -H "content-type: application/json" \
+  -H "x-workspace-token: $TOKEN" \
+  -d '{"caseId":"c6","summaries":[{"documentId":"d1","documentName":"Passport.pdf","summary":"Entry on 15 March 2026.","highlights":[{"text":"Entry date 15 March 2026","page":1,"verified":true}],"engine":"llm"}]}'
+```
 
 ### Deploying the current demo to Cloudflare
 
 The repository includes a **manual deployment workflow** (`workflow_dispatch`) and `npm run deploy`.
 These describe a deployment procedure; their presence does **not** prove that a Worker currently exists,
 is reachable, or is running this revision. The workflow targets a Worker named `caseclarity-ai` and
-requires Cloudflare credentials and an LLM key when it writes secrets. No database or Hyperdrive setup
-is part of that workflow.
+requires Cloudflare credentials and an LLM key when it writes secrets.
+
+**Summary database.** `cloudflare.config.ts` binds `DB` to the existing D1 database
+`caseclarity-summaries`. Create it once in the Cloudflare dashboard (Storage & Databases → D1) if this is
+a new account — a missing binding makes the deploy fail. The Worker creates/extends the
+`document_summaries` table on first use with the additive migration described in
+[`db/schema.sql`](db/schema.sql); there is no separate migration command and no data is dropped. Existing
+records, including those stored by the earlier case-ID-scoped implementation, are preserved.
 
 ```bash
 # From your machine; requires your own Cloudflare account and authorization
@@ -767,6 +836,17 @@ LLM_FALLBACK_MODELS=
 The retry knobs (`LLM_MAX_ATTEMPTS`, `LLM_RETRY_BASE_DELAY_MS`) are not declared bindings on the Worker,
 so Worker defaults apply unless the configuration is changed.
 
+### D1 summary database (binding, not an environment variable)
+
+| Setting | Value |
+|---|---|
+| Binding name | `DB` (declared in `cloudflare.config.ts` as `bindings.d1({ name: "caseclarity-summaries" })`) |
+| Database | `caseclarity-summaries` — the existing database; the app never creates, renames or empties it |
+| Table | `document_summaries` (see [`db/schema.sql`](db/schema.sql)) |
+| Schema management | Additive runtime migration in `src/lib/summaries-db.ts`; runs once per Worker isolate |
+| Without the binding | `/api/summaries` returns `503`; summaries stay in the browser; Demo Mode is unaffected |
+| Local development | `npm run dev` has no binding; `npm run dev:cloudflare` / `npm run preview:cloudflare` use local D1 |
+
 **Never commit `.env` or `.dev.vars`** — both are gitignored. The key is read server-side only
 (`src/lib/server-config.ts`, the only current file that reads `process.env`); nothing sensitive uses
 `NEXT_PUBLIC_*`, and the browser learns only the mode and model name from `GET /api/config`.
@@ -781,13 +861,14 @@ so Worker defaults apply unless the configuration is changed.
 
 ## Testing and code quality
 
-**Recorded verification (2026-11-21, commit `4648561`)**:
-`npm test` → **112/112 passing in 11 files**; `npm run typecheck` → pass; `npm run lint` → pass;
-`npm run build:cloudflare` → pass. This is a dated result for that commit, not a claim that the current
-branch or latest CI run has passed.
-
-`npm run build` was not executed in that verification environment because it fetches the Geist font from
-Google Fonts. CI is configured to run it, but this README does not assert a current CI result.
+**Recorded verification (2026-11-22, D1 restoration branch)**:
+`npm test` → **144/144 passing in 12 files**; `npm run typecheck` → pass; `npm run lint` → pass;
+`npm run build:cloudflare` → pass (including `/api/summaries`). `npm run build` could not complete in the
+development sandbox because Next fetches the Geist font from Google Fonts and the sandbox has no route to
+`fonts.googleapis.com`; the failure happens before project code is compiled, and CI runs the same command.
+D1 save/read/isolation and the additive migration were exercised in workerd with a local D1 database
+(`npm run dev:cloudflare`) — see *Working with the Cloudflare build*. **These results do not verify the
+deployed production Worker or its remote D1 database.**
 
 ### The suite
 
@@ -804,12 +885,13 @@ Google Fonts. CI is configured to run it, but this README does not assert a curr
 | `tests/accounts.test.ts` | 4 | Demo sign-in, wrong passwords, bcrypt-hashed sign-ups, duplicate and invalid accounts |
 | `tests/auth.test.ts` | 4 | bcrypt hashing and salting |
 | `tests/csv.test.ts` | 4 | CSV parsing, export quoting, duplicate detection |
-| **Total** | **112** | No network, database or API key needed |
+| `tests/summaries.test.ts` | 32 | D1 save/read/delete, parameterised SQL, legacy-schema migration, missing binding, invalid payloads, cross-origin requests, workspace isolation, token hashing, browser fallback, Demo Mode without D1 |
+| **Total** | **144** | No network, database or API key needed (D1 is replaced by an in-memory fake) |
 
 ### Quality gates
 
 ```bash
-npm test                  # 112 unit tests
+npm test                  # 144 unit tests
 npm run typecheck         # next typegen + tsc --noEmit
 npm run lint              # ESLint (next/core-web-vitals)
 npm run build             # Next.js production build
@@ -853,6 +935,17 @@ with your own key before relying on it.
   hosting, access controls, tenant isolation, retention/deletion, backups, encryption, incident response
   and provider data-flow policies are not implemented or defined by this repository. Do not use real
   client or sensitive case data until those controls are implemented, reviewed and communicated.
+- **AI summaries leave the browser.** On the Live AI path, `/api/summaries` stores the generated summary,
+  its highlights, the document id/name, the engine and a timestamp in Cloudflare D1. Document text,
+  original files and case records are never sent to it. The same summary remains in the visitor's browser.
+- **Summary access is a capability, not authentication.** D1 rows are scoped by the SHA-256 of a random
+  workspace token held in the browser. Anyone who obtains that token (for example through device access
+  or an XSS bug) can read or replace those summaries; without it a case ID is useless. Tokens are per
+  browser workspace, so all accounts signed in on one browser share them. This is a deliberate interim
+  control, not the target design — real per-user authorization waits for server-side sessions.
+- **Legacy summary rows are quarantined.** Rows written before per-workspace scoping have
+  `workspace_id = NULL`. They are preserved but returned to no one. Deleting the table would be the only
+  way to erase them through this app, and the app never does that.
 - **API keys stay server-side in the current code.** `src/lib/server-config.ts` is the only current file
   reading `process.env`; provider error bodies are not echoed because they can contain key fragments.
 - All data in the public demo dataset (accounts, cases, documents and metrics) is fictional.
@@ -862,8 +955,12 @@ with your own key before relying on it.
 - Current demo accounts are a **demo convenience**, stored in browser IndexedDB. The current API has
   **no user authentication or server-side authorization**; local role checks are not a security boundary.
 - `/api/analyze` has a same-origin request check and, on Cloudflare, a 10-per-minute-per-visitor rate
-  limit. These controls do not authenticate users. Any public deployment should be reviewed for access
-  controls, abuse limits and provider spending exposure.
+  limit. `/api/summaries` has the same-origin check, requires a workspace token and caps payload sizes,
+  but it has no per-user authentication or write rate limit of its own (each request is bounded to 50
+  rows and replaces only that workspace's rows). These controls do not authenticate users. Any public
+  deployment should be reviewed for access controls, abuse limits and provider spending exposure.
+- The summaries API cannot be used to read case data: it only accepts the summary fields it stores and
+  never returns extracted text, files, accounts or audit records.
 - The current audit trail is append-only by application convention (`appendAudit()` only prepends), not
   cryptographically sealed or server-enforced; browser data can be changed or cleared.
 - The historical `34dd6c0` implementation did have server-side bcrypt accounts, hashed-token sessions
@@ -890,7 +987,11 @@ with your own key before relying on it.
 
 | Area | Limitation |
 |---|---|
-| Persistence | Per browser/device only. No shared workspace or cross-device access; clearing site data resets to demo data; tabs can overwrite each other. |
+| Persistence | Case data is per browser/device only. No shared workspace or cross-device access; clearing site data resets to demo data; tabs can overwrite each other. |
+| AI summaries in D1 | Stored server-side in Cloudflare D1 so they survive clearing browser data for the same workspace token. Only summaries and highlights are stored; there is no server-side case data to join them to. |
+| Summary isolation | Scoped by a bearer-style workspace token (SHA-256 hash in D1), not by a signed-in user. Anyone with browser-profile access or the token can read that workspace's summaries. Accounts on one browser share a token. |
+| Summary schema compatibility | The migration is additive and preserves existing rows. Pre-isolation rows (`workspace_id = NULL`) are unreachable through the API until an operator assigns them to a workspace. |
+| Summary write abuse | Payloads and row counts are capped, but there is no dedicated rate limit on `/api/summaries`; an unauthenticated visitor can still write bounded rows under their own random workspace. |
 | Intended production backend | PostgreSQL is absent from the current tree. The historical schema/API are references, not an active service; no Hyperdrive binding, database credentials, deployment or migration exists here. |
 | Identity | Browser-local accounts and role checks are not a security boundary. No password reset, organization administration or server-side authorization in the current demo. |
 | Live AI | Not validated against a real provider from the development environment; current endpoint has no user authentication. |
@@ -912,6 +1013,7 @@ with your own key before relying on it.
 | **Production prerequisite** | Integrate PostgreSQL with Cloudflare Workers through a configured Cloudflare Hyperdrive binding; provision infrastructure and secrets outside the repository without committing credentials. |
 | **Production prerequisite** | Restore server-side sessions and authorization, then implement tenant isolation, validation, rate limits, secure secret handling, privacy/retention/deletion policy, backups and operational monitoring. |
 | **Production prerequisite** | Add integration tests against PostgreSQL and verify deploy health, database connectivity and runtime configuration; do not treat the demo `/api/health` as a database check. |
+| **Production prerequisite** | Replace the workspace-token capability on `/api/summaries` with per-user authorization once server-side sessions exist, and migrate or expire the interim summary rows. |
 | Next | Protect Live AI with appropriate access controls and per-organization quotas; document AI-provider data handling. |
 | Next | Add OCR (scanned PDFs, photos) and legacy `.doc` support; decide whether originals should be retained, and under what encryption/retention policy. |
 | Next | Run the timed caseworker study and extraction benchmark, then replace illustrative evaluation numbers with measured results. |
@@ -941,6 +1043,7 @@ caseclarity-ai/
 │   │   ├── api/analyze/route.ts      # POST — Live AI analysis, verification, rate limit
 │   │   ├── api/config/route.ts       # GET  — aiMode and model (non-secret)
 │   │   ├── api/health/route.ts       # GET  — liveness
+│   │   ├── api/summaries/route.ts    # GET/POST/DELETE — AI summaries in Cloudflare D1
 │   │   ├── globals.css               # Tailwind theme tokens
 │   │   ├── layout.tsx                # root layout + StoreProvider
 │   │   ├── login/page.tsx            # one-click demo accounts
@@ -948,10 +1051,11 @@ caseclarity-ai/
 │   │   └── signup/page.tsx           # local account creation
 │   ├── components/ui.tsx             # shared badges, cards, banners, buttons
 │   ├── data/demo-data.ts             # the fictional dataset (cases, docs, facts, audit)
-│   ├── lib/                          # 12 modules: store, workspace, core, llm, extract, csv…
+│   ├── lib/                          # store, workspace, core, llm, summaries, summaries-db, extract, csv…
 │   └── types/                        # ambient types for import.meta.env and mammoth
-├── tests/                            # 11 Vitest files (112 tests) + mock provider + e2e script
-├── cloudflare.config.ts              # Worker name, entrypoint, bindings, rate limit
+├── db/schema.sql                     # D1 document_summaries schema + compatibility notes
+├── tests/                            # 12 Vitest files (144 tests) + mock provider + e2e script
+├── cloudflare.config.ts              # Worker name, entrypoint, D1 + LLM bindings, rate limit
 ├── vite.config.ts                    # vinext + Cloudflare plugin
 ├── vitest.config.ts                  # node environment, "@/" alias
 ├── next.config.ts

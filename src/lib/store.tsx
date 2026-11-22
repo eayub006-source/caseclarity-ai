@@ -6,6 +6,7 @@ import type { VerifiedResult } from "./llm";
 import { MAX_PROMPT_CHARS } from "./llm";
 import { kvDelete, kvGet, kvSet } from "./browser-db";
 import { authenticate, createAccount, findUser, type LocalAccount } from "./accounts";
+import { deleteStoredSummaries, saveCaseSummaries, syncCaseSummaries } from "./summaries";
 import * as W from "./workspace";
 
 export interface ExtractResponse { name: string; text: string; pageCount: number; type: string; pagesEstimated: boolean; warning?: string; }
@@ -24,13 +25,17 @@ export type AnalyzeResponse =
     }
   | { mode: "demo"; reason: string };
 
-// The app's single data gateway. There is no database: the workspace starts
-// as a copy of the fictional dataset in src/data/demo-data.ts and every
-// change is saved in this browser (IndexedDB, see ./browser-db.ts). Each
-// visitor therefore has a private copy, and "Reset demo data" restores it.
-// The rules (validation, case numbers, locked reviews, append-only audit)
-// live in ./workspace.ts. The only network calls are /api/config and the
-// optional Live AI analysis (/api/analyze).
+// The app's single data gateway. The workspace starts as a copy of the
+// fictional dataset in src/data/demo-data.ts and every change is saved in this
+// browser (IndexedDB, see ./browser-db.ts). Each visitor therefore has a
+// private copy, and "Reset demo data" restores it. The rules (validation, case
+// numbers, locked reviews, append-only audit) live in ./workspace.ts.
+//
+// The one exception is AI document summaries: Live AI mirrors them to
+// Cloudflare D1 through /api/summaries and loads them back when a case opens,
+// scoped by this workspace's token. The browser copy is the source of truth
+// when D1 is missing or a call fails; Demo Mode never talks to D1 at all.
+// Other network calls: /api/config and the optional Live AI analysis.
 //
 // Every mutation throws a readable Error when a rule is broken, so callers
 // never report success for a change that did not happen.
@@ -43,6 +48,12 @@ export function errorMessage(e: unknown, fallback = "Something went wrong"): str
   return e instanceof Error && e.message ? e.message : fallback;
 }
 
+/**
+ * Where this workspace's AI summaries are safe right now: D1 (cloud and
+ * browser), or this browser only (D1 unavailable, offline, or Demo Mode).
+ */
+export type SummaryStorage = "unknown" | "d1" | "local";
+
 interface Store {
   user: User | null;
   ready: boolean;
@@ -54,6 +65,10 @@ interface Store {
   recs: Recommendation[];
   audit: W.Workspace["audit"];
   summaries: W.DocSummaryItem[];
+  /** Whether the AI summaries are also stored in D1, or only in this browser. */
+  summaryStorage: SummaryStorage;
+  /** Loads the D1 summaries for one case into the browser copy (best effort). */
+  syncSummaries: (caseId: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   signup: (name: string, email: string, password: string, org: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -102,6 +117,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   // Refs hold the latest values so several awaited mutations in one handler
   // (e.g. analysis: facts, recommendation, case status, audit) build on each other.
   const wsRef = useRef<W.Workspace>(EMPTY);
+  // The D1 isolation token of the current workspace (see ./summaries.ts).
+  const tokenRef = useRef<string | null>(null);
+  const [summaryStorage, setSummaryStorage] = useState<SummaryStorage>("unknown");
   const userRef = useRef<User | null>(null);
   const accountsRef = useRef<LocalAccount[]>([]);
   const storageWarned = useRef(false);
@@ -142,9 +160,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         kvGet<{ userId?: string }>(SESSION_KEY),
       ]);
       if (cancelled) return;
-      const initial = W.loadWorkspace(stored) ?? W.demoWorkspace();
+      const loaded = W.loadWorkspace(stored) ?? W.demoWorkspace();
+      // Workspaces saved before D1 support get their isolation token here.
+      const initial = W.ensureWorkspaceToken(loaded);
+      tokenRef.current = initial.workspaceToken ?? null;
       wsRef.current = initial;
       setWs(initial);
+      if (initial !== loaded) void kvSet(WORKSPACE_KEY, initial);
       accountsRef.current = Array.isArray(accounts) ? accounts : [];
       setSignedIn(findUser(accountsRef.current, session?.userId));
       setReady(true);
@@ -238,12 +260,23 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const resetDemo = useCallback(async () => {
     const u = manager(userRef.current, "reset demo data");
-    apply(W.appendAudit(W.demoWorkspace(), null, "Demo data reset", "Workspace reset to the fictional demo data", "system", u.name).ws);
+    // A reset is a clean slate, so it also gets a fresh D1 token; the old
+    // workspace's cloud summaries are removed when D1 is reachable.
+    const previousToken = tokenRef.current;
+    const next = W.ensureWorkspaceToken(
+      W.appendAudit(W.demoWorkspace(), null, "Demo data reset", "Workspace reset to the fictional demo data", "system", u.name).ws
+    );
+    tokenRef.current = next.workspaceToken ?? null;
+    apply(next);
+    setSummaryStorage("unknown");
+    if (previousToken) void deleteStoredSummaries({ token: previousToken });
   }, [apply]);
 
   const deleteCase = useCallback(async (id: string) => {
     const u = manager(userRef.current, "delete cases");
     apply(W.deleteCase(wsRef.current, id, u.name));
+    // Best effort: deleting a case should not leave its AI summaries in D1.
+    if (tokenRef.current) void deleteStoredSummaries({ token: tokenRef.current, caseId: id });
   }, [apply]);
 
   // Text extraction runs in the browser; the parsers load on first use.
@@ -253,6 +286,49 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (import.meta.env?.SSR) throw new Error("Text extraction runs in the browser.");
     const { extractFile: extract } = await import("./extract");
     return extract(file);
+  }, []);
+
+  // ---------- AI summaries in D1 ----------
+
+  /**
+   * Loads the cloud copy of a case's AI summaries into the workspace. Run when
+   * a case page opens. Any failure (no D1 binding, offline, an error status)
+   * leaves the browser copy untouched and marks the summaries local-only.
+   */
+  const syncSummaries = useCallback(async (caseId: string) => {
+    const token = tokenRef.current;
+    if (!token || !caseId) {
+      setSummaryStorage("local");
+      return;
+    }
+    // Demo Mode produces no summaries, so it never depends on D1.
+    const result = await syncCaseSummaries({ caseId, token, aiMode: config.aiMode });
+    if (!result) {
+      setSummaryStorage("local");
+      return;
+    }
+    // A reset or sign-in change may have replaced the workspace meanwhile.
+    if (tokenRef.current !== token) return;
+    if (!result.ok) {
+      setSummaryStorage("local");
+      return;
+    }
+    setSummaryStorage("d1");
+    if (result.summaries.length) apply(W.mergeSummaries(wsRef.current, caseId, result.summaries));
+  }, [apply, config.aiMode]);
+
+  /** Mirrors the workspace's summaries for one case to D1. Never throws. */
+  const persistCaseSummaries = useCallback(async (caseId: string, token: string) => {
+    const summaries = W.caseSummaries(wsRef.current, caseId).map((s) => ({
+      documentId: s.documentId,
+      documentName: s.documentName,
+      summary: s.summary,
+      highlights: s.highlights,
+      engine: s.engine,
+    }));
+    if (!summaries.length) return;
+    const result = await saveCaseSummaries({ caseId, token, summaries });
+    if (tokenRef.current === token) setSummaryStorage(result.ok ? "d1" : "local");
   }, []);
 
   // Live AI runs on the server (it holds the API key). Without a key the app
@@ -282,15 +358,19 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (!res.ok) throw new ApiError(data.error || `Request failed (HTTP ${res.status})`, res.status);
     const out = data as unknown as { mode?: string; result?: { documentSummaries?: unknown[] } };
     if (out.mode === "llm" && out.result?.documentSummaries?.length) {
-      // Saved in this browser with the rest of the workspace — private to the visitor.
+      // Always kept in this browser first, then mirrored to D1. If D1 is
+      // unavailable the summary stays local and the UI says so.
       apply(W.replaceSummaries(wsRef.current, caseId, out.result.documentSummaries, "llm"));
+      const token = tokenRef.current;
+      if (token) await persistCaseSummaries(caseId, token);
     }
     return data as unknown as AnalyzeResponse;
-  }, [apply, config.aiMode]);
+  }, [apply, config.aiMode, persistCaseSummaries]);
 
   const value: Store = {
     user, ready, config, isManager: canManage(user?.role),
     cases: ws.cases, docs: ws.docs, extractions: ws.extractions, recs: ws.recs, audit: ws.audit, summaries: ws.summaries ?? [],
+    summaryStorage, syncSummaries,
     login, signup, logout, addCase, updateCase, addDoc, addRec, reviewRec,
     log, importCases, resetDemo, deleteCase, extractFile, analyze, replaceCaseExtractions, toast, notify,
   };
