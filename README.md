@@ -9,10 +9,13 @@ eviction defences, benefits appeals, employment claims and immigration filings.
 
 Built by **Team HACKSMITHS** for **HACKSMITHS — Build for Campus 2026**
 
-[![Live demo](https://img.shields.io/badge/live_demo-open-0B7285?logo=cloudflare&logoColor=white)](https://caseclarity-ai.eayub006.workers.dev)
+[![Demo deployment](https://img.shields.io/badge/demo_deployment-link-0B7285?logo=cloudflare&logoColor=white)](https://caseclarity-ai.eayub006.workers.dev)
 [![CI](https://github.com/eayub006-source/caseclarity-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/eayub006-source/caseclarity-ai/actions/workflows/ci.yml)
 [![Tests](https://img.shields.io/badge/tests-112_passing-2E7D32)](https://github.com/eayub006-source/caseclarity-ai/tree/main/tests)
 [![License](https://img.shields.io/badge/license-none-lightgrey)](#license)
+
+[![Status](https://img.shields.io/badge/status-browser_local_demo-6B7280)](#project-state-demo-history-and-production-target)
+[![Backend](https://img.shields.io/badge/backend-PostgreSQL_%28planned%29-4169E1?logo=postgresql&logoColor=white)](#historical-postgresql-implementation-commit-34dd6c0)
 
 [![Next.js](https://img.shields.io/badge/Next.js-16.4.6-000000?logo=nextdotjs&logoColor=white)](https://nextjs.org)
 [![React](https://img.shields.io/badge/React-19.3.1-149ECA?logo=react&logoColor=white)](https://react.dev)
@@ -21,7 +24,7 @@ Built by **Team HACKSMITHS** for **HACKSMITHS — Build for Campus 2026**
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)](https://developers.cloudflare.com/workers/)
 [![Vitest](https://img.shields.io/badge/Vitest-5.1-6E9F18?logo=vitest&logoColor=white)](https://vitest.dev)
 
-[Live demo](https://caseclarity-ai.eayub006.workers.dev) ·
+[Demo deployment](https://caseclarity-ai.eayub006.workers.dev) ·
 [Repository](https://github.com/eayub006-source/caseclarity-ai) ·
 [Demo guide](#product-demonstration) ·
 [Architecture](#architecture) ·
@@ -32,6 +35,15 @@ Built by **Team HACKSMITHS** for **HACKSMITHS — Build for Campus 2026**
 > **Prototype notice.** CaseClarity AI is a hackathon prototype, not legal advice and not a replacement
 > for a qualified legal professional. Every case, client, document and metric in the demo is fictional.
 > Confidence scores are uncalibrated heuristics, not probabilities.
+>
+> **Where this project stands.** The repository currently runs as an **interim browser-local demo**:
+> case data, accounts and sessions live in each visitor's IndexedDB and there is no database.
+> PostgreSQL is the **intended production backend**. A complete PostgreSQL + Drizzle ORM implementation
+> is preserved in Git history at commit `34dd6c0` and is the verified historical reference for the
+> intended production architecture's schema, API routes and authentication. The final production schema
+> still requires engineering review. The planned return to PostgreSQL through Cloudflare
+> Hyperdrive is **not implemented, configured or deployed**. See
+> [Project state](#project-state-demo-history-and-production-target).
 
 ---
 
@@ -42,18 +54,20 @@ Built by **Team HACKSMITHS** for **HACKSMITHS — Build for Campus 2026**
 3. [Key features](#key-features)
 4. [How it works](#how-it-works)
 5. [Product demonstration](#product-demonstration)
-6. [Technology stack](#technology-stack)
-7. [Architecture](#architecture)
-8. [Data storage](#data-storage)
-9. [API reference](#api-reference)
-10. [Local setup](#local-setup)
-11. [Environment variables](#environment-variables)
-12. [Testing and code quality](#testing-and-code-quality)
-13. [Security, privacy and responsible AI](#security-privacy-and-responsible-ai)
-14. [Limitations and future work](#limitations-and-future-work)
-15. [Project structure](#project-structure)
-16. [Documentation](#documentation)
-17. [License](#license)
+6. [Project state: demo, history and production target](#project-state-demo-history-and-production-target)
+7. [Technology stack](#technology-stack)
+8. [Architecture](#architecture)
+9. [Historical PostgreSQL implementation (commit `34dd6c0`)](#historical-postgresql-implementation-commit-34dd6c0)
+10. [Data storage](#data-storage)
+11. [API reference](#api-reference)
+12. [Local setup](#local-setup)
+13. [Environment variables](#environment-variables)
+14. [Testing and code quality](#testing-and-code-quality)
+15. [Security, privacy and responsible AI](#security-privacy-and-responsible-ai)
+16. [Limitations and future work](#limitations-and-future-work)
+17. [Project structure](#project-structure)
+18. [Documentation](#documentation)
+19. [License](#license)
 
 ---
 
@@ -120,7 +134,7 @@ path requires the model to say so, and the recommendation is labelled as insuffi
 | **CSV import and export** | RFC 4180 parsing (PapaParse), tolerant column mapping, mixed-date handling, duplicate detection (client + title), an import report, a downloadable sample CSV, and export of cases and audit events. |
 | **Demo Mode and Live AI** | Both paths exist and are labelled everywhere (mode badge, per-recommendation engine badge, audit wording). Demo Mode needs no API key and makes no provider call. |
 | **Roles** | `case_worker`, `senior_case_worker` and `admin`; only the last two can delete cases or reset demo data. |
-| **Cloudflare deployment** | Builds and serves the app plus three stateless API routes from a Cloudflare Worker via `vinext`. |
+| **Cloudflare deployment** | Builds and serves the app plus three stateless API routes from a Cloudflare Worker via `vinext`. No database binding is configured in this demo. |
 
 ### Simulated or illustrative features
 
@@ -137,7 +151,8 @@ These are **not** working integrations or measured results, and the interface sa
 ### Not implemented
 
 OCR for scanned PDFs · legacy `.doc` files · real page boundaries for DOCX · keeping the original
-uploaded files · a shared workspace across devices or team members · password reset · organisation
+uploaded files · a shared workspace across devices or team members · server-side sessions and database
+persistence (the historical PostgreSQL implementation only) · password reset · organisation
 administration · real Google Drive OAuth · server-enforced audit immutability · committed end-to-end
 browser tests · measured evaluation results.
 
@@ -257,9 +272,31 @@ server-side authorisation boundary — see [Security](#security-privacy-and-resp
 - **`/evaluation`**: the illustrative metrics, plainly labelled, next to live workspace totals.
 - **`/integrations`**: the honesty line — "Google Drive is simulated; CSV import/export is real".
 
+## Project state: demo, history and production target
+
+Three distinct things are easy to confuse in this repository. They are not interchangeable:
+
+| Layer | What it is | Status |
+|---|---|---|
+| **Current implementation** (baseline commit `f236509`) | Next.js + React workspace where every case, account, session and audit entry lives in the visitor's IndexedDB; three stateless API routes; optional Cloudflare Worker deployment via `vinext` | **Interim demo.** This is the checked-out baseline implementation. There is no database. |
+| **Historical implementation** (commit `34dd6c0`) | Next.js + PostgreSQL 15 + Drizzle ORM, server-side sessions, bcrypt accounts, authenticated REST API, seven tables | **Previously implemented and verified in Git history.** It is a historical reference for the intended production architecture, not a production-readiness claim; its schema, API and authentication design require engineering review before production use. It is not the code in the working tree. |
+| **Intended production architecture** | PostgreSQL behind Cloudflare Hyperdrive, server-side sessions, authenticated API, shared workspace | **Planned.** No Hyperdrive binding, PostgreSQL connection, migration or production database exists in this repository. |
+
+**Do not read the demo as the product architecture.** "No database" is a deliberate property of the
+interim build, not the intended end state. Equally, the PostgreSQL implementation at `34dd6c0` is a
+historical reference, not a running service: its files (`src/db/schema.ts`, `src/db/index.ts`,
+`drizzle.config.ts`, the authenticated route handlers) are absent from the baseline commit `f236509`.
+
+The migration path is documented in [Limitations and future work](#limitations-and-future-work):
+restore the `34dd6c0` schema, add a storage adapter, reintroduce server-side authentication, and put
+Cloudflare Hyperdrive between the application and PostgreSQL.
+
 ## Technology stack
 
-Versions are taken from `package.json` and the build configuration.
+Versions are taken from `package.json` and the build configuration. The first table is the **current
+demo**. The historical PostgreSQL stack and the planned production stack follow it.
+
+### Current demo (baseline commit `f236509`)
 
 | Layer | Technology | Version |
 |---|---|---|
@@ -280,126 +317,246 @@ Versions are taken from `package.json` and the build configuration.
 | AI integration | Any OpenAI-compatible Chat Completions API, called with `fetch` (no SDK) | — |
 | CI | GitHub Actions (Node 22) | — |
 
-There is **no ORM, no SQL client and no database driver** in this version. Node.js 22 or newer is
-required for tooling (CI pins Node 22; the `cf` CLI warns below 22.23.0).
+The current demo has **no ORM, no SQL client and no database driver**. Node.js 22 or newer is required
+for tooling (CI pins Node 22; the `cf` CLI warns below 22.23.0).
+
+### Historical stack at commit `34dd6c0`
+
+These are the dependencies and files present in the PostgreSQL implementation, verified directly from
+that commit:
+
+| Layer | Technology | Version |
+|---|---|---|
+| Database | PostgreSQL 15 | 15.x (README of that commit states 15, tested with 15.19) |
+| ORM | Drizzle ORM | 0.45.2 |
+| Schema tooling | drizzle-kit | 0.31.10 |
+| PostgreSQL driver | `pg` | 8.20.0 |
+| Driver types | `@types/pg` | 8.18.0 |
+| Password hashing | `bcryptjs` | ^3.0.3 |
+| Framework | Next.js | 16.4.6 |
+
+Schema and client files: `src/db/schema.ts` and `src/db/index.ts`; tooling: `drizzle.config.ts` and the
+`db:push` script. See [Historical PostgreSQL implementation](#historical-postgresql-implementation-commit-34dd6c0).
+
+### Planned production stack
+
+| Layer | Intended technology | Status |
+|---|---|---|
+| Database | PostgreSQL, using the seven-table schema from `34dd6c0` as the reference | Planned; no database exists in this repository |
+| Connection pooling / caching | Cloudflare Hyperdrive in front of PostgreSQL | Planned; no Hyperdrive binding or configuration exists |
+| ORM | Drizzle ORM, restoring the `34dd6c0` schema and `drizzle-kit` workflow | Planned; no migration has been written |
+| Authentication | Server-side sessions and bcrypt, restoring the `34dd6c0` design | Planned; the current demo uses browser-local accounts |
+| Hosting | Cloudflare Workers (current demo deployment target) | Current demo only; no database is bound |
+
+No version, provider region, database host, credential or Hyperdrive configuration is asserted here,
+because none is defined in the repository.
 
 ## Architecture
 
+The diagram below describes **only the current IndexedDB demo**. The production-target architecture
+that follows is planned, not configured or deployed.
+
 ```mermaid
 flowchart TB
-    subgraph BROWSER["Browser — the workspace and all case data"]
-        UI["React pages<br/>landing · dashboard · cases · upload · audit"]
-        STORE["StoreProvider<br/>src/lib/store.tsx"]
-        RULES["Workspace rules<br/>src/lib/workspace.ts"]
-        IDB[("IndexedDB<br/>caseclarity-ai / kv<br/>workspace · accounts · session")]
-        EXT["Text extraction<br/>src/lib/extract.ts<br/>unpdf · mammoth"]
-        DEMO["Demo engine<br/>runAnalysis in src/lib/core.ts"]
-        UI --> STORE
-        STORE --> RULES
-        STORE --> IDB
-        STORE --> EXT
-        UI --> DEMO
+    subgraph BROWSER["Current demo: browser"]
+        UI["React workspace"] --> STORE["StoreProvider + workspace rules"]
+        STORE --> IDB[("IndexedDB: workspace · accounts · session")]
+        STORE --> EXT["Browser extraction: unpdf · mammoth"]
+        UI --> DEMO["Local deterministic demo analysis"]
     end
-
-    subgraph WORKER["Cloudflare Worker — stateless routes"]
-        R1["POST /api/analyze"]
-        R2["GET /api/config"]
-        R3["GET /api/health"]
-        CFG["server-config.ts<br/>LLM_* configuration<br/>same-origin check · rate limit"]
-        LLM["llm.ts<br/>prompt · retries · citation verification"]
-        R1 --> CFG
-        CFG --> LLM
+    subgraph WORKER["Current demo: stateless Cloudflare Worker"]
+        ROUTES["POST /api/analyze · GET /api/config · GET /api/health"]
+        LLM["Prompt · retries · citation verification"]
+        ROUTES --> LLM
     end
-
-    subgraph PROVIDER["External AI provider"]
-        P["OpenAI-compatible<br/>Chat Completions API"]
-    end
-
-    STORE -->|"Live AI only: case fields + extracted text"| R1
-    UI -->|"reads the mode for its badge"| R2
-    LLM -->|"HTTPS + Bearer key"| P
+    PROVIDER["External OpenAI-compatible AI provider<br/>outside the Worker"]
+    STORE -. "Live AI only: case fields + extracted text" .-> ROUTES
+    UI -. "reads mode for badge" .-> ROUTES
+    LLM -. "HTTPS + Bearer key" .-> PROVIDER
 ```
 
-**Two hard boundaries define the design.**
+**Current demo boundaries:**
 
-1. **Case data never leaves the browser.** There is no database and no server-side session. The workspace
-   — cases, documents, extracted text, facts, recommendations, summaries, accounts and audit entries —
-   lives in the visitor's IndexedDB. The backend rules a server would normally enforce (validation, case
-   numbering, locked reviews, append-only audit) are implemented as pure, unit-tested functions in
-   `src/lib/workspace.ts`, and `src/lib/store.tsx` is the only mutation gateway.
-2. **The server is a stateless analysis service.** The Worker serves the app and exactly three JSON
-   routes. It holds the API key, builds the prompt, calls the provider, verifies citations and returns
-   JSON. It persists nothing and keeps no copy of a visitor's workspace.
+1. **Persistence is browser-local.** Cases, documents, extracted text, facts, recommendations, summaries,
+   accounts, session identity and audit entries are stored in each visitor's IndexedDB. There is no
+   database, server-side session or shared workspace in the current tree.
+2. **The Worker is stateless.** It serves the app and three JSON routes. For Live AI it holds the provider
+   key, builds a prompt, calls the provider, verifies citations and returns JSON; it does not persist the
+   workspace.
+3. **Live AI is the data-flow exception.** When enabled, the case fields and extracted text for that
+   analysis are sent to `/api/analyze`, then to the configured AI provider. Demo Mode analysis is local.
 
-That separation is what makes the demo safe to publish: opening the site gives you your own private
-sandbox, no other visitor can see it, and the server retains nothing after the response.
+The intended server-backed production direction changes this boundary:
 
-The single documented exception to "data stays local" is Live AI: when a key is configured, the extracted
-text of the case being analysed is sent to `/api/analyze` and on to the configured AI provider for that
-one request.
+```mermaid
+flowchart LR
+    B["Browser client"] -->|"authenticated API requests"| W["Cloudflare Worker / application API"]
+    W -->|"planned binding"| H["Cloudflare Hyperdrive"]
+    H -->|"pooled connection"| PG[("PostgreSQL")]
+    W -->|"Live AI request only"| AI["Configured AI provider"]
+```
+
+**Everything in the second diagram is a target, not existing infrastructure.** No Hyperdrive binding,
+PostgreSQL connection, server-side storage adapter, or database deployment is present in this checkout.
+The target is based on the verified implementation in [`34dd6c0`](#historical-postgresql-implementation-commit-34dd6c0),
+with Hyperdrive as the planned Cloudflare-to-PostgreSQL connection layer. Its exact deployment design
+and operational controls remain to be implemented and verified.
+
+## Historical PostgreSQL implementation (commit `34dd6c0`)
+
+This section records source inspected directly at commit
+[`34dd6c0457615e53642569ff35f5d449656d9c6f`](https://github.com/eayub006-source/caseclarity-ai/commit/34dd6c0457615e53642569ff35f5d449656d9c6f).
+It describes a historical implementation, not the current application or a live deployment.
+
+### Database schema
+
+`src/db/schema.ts` defines seven PostgreSQL tables with Drizzle `pg-core`:
+
+| Table | Historical columns and relationships |
+|---|---|
+| `users` | UUID primary key; unique email; name, password hash, role (default `case_worker`), organization, creation timestamp |
+| `cases` | UUID primary key; unique case number; title, client name, case type, status (`awaiting_review` default), priority (`medium` default), description, assignee, completeness, created/updated timestamps |
+| `documents` | Case foreign key with cascade delete; name, type, size, status (`uploaded` default), extracted text, source, page count, upload timestamp |
+| `extractions` | Case foreign key with cascade delete; document foreign key set to null on document deletion; field name/value, confidence (default 80), source document/page/snippet, category (`fact` default), verified flag (default true), timestamp |
+| `recommendations` | Case foreign key with cascade delete; title, summary, reasoning, confidence (default 70), status (`pending` default), engine (`seed`, `demo` or `llm`), JSONB evidence/contradictions/missing information/uncertainties/next steps, review fields and timestamps |
+| `sessions` | User foreign key with cascade delete; unique token hash, expiry and creation timestamps |
+| `audit_logs` | Case foreign key set to null on case deletion so audit history can survive; actor, action, details, category (`general` default), timestamp |
+
+These tables and constraints describe that commit's schema. They are **not** present at baseline
+commit `f236509`, and no current migration or database exists.
+
+### Drizzle, PostgreSQL connection and schema workflow
+
+At `34dd6c0`:
+
+- `drizzle.config.ts` loads `dotenv/config`, requires `DATABASE_URL`, and configures Drizzle Kit with
+  `dialect: "postgresql"`, schema `./src/db/schema.ts`, and the URL from that environment variable.
+- `src/db/index.ts` creates a `pg.Pool` and a Drizzle node-postgres client. It requires `DATABASE_URL`,
+  caches the pool on `globalThis.__arenaNextJsPostgresqlPool` outside production, and passes
+  `options: "-c timezone=UTC"` to align timestamps with the schema's `timestamp without time zone` fields.
+- The historical `package.json` included `drizzle-orm` 0.45.2, `drizzle-kit` 0.31.10, `pg` 8.20.0,
+  `@types/pg` 8.18.0 and `dotenv` 17.3.1. It defined `npm run db:push` as `drizzle-kit push`.
+- `.env.example` documented `DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/app_db` as a
+  **local example**, not a live credential. Other historical variables included `DEMO_ACCOUNT`,
+  `TRUST_PROXY`, `TRUSTED_IP_HEADER`, `LLM_API_KEY`, `LLM_BASE_URL` and `LLM_MODEL`.
+
+The historical setup used PostgreSQL 15 and Drizzle's push workflow; no `db:generate` or
+`db:migrate` script was defined in that commit. Do not copy the example URL into a deployment or assume
+it names an existing database.
+
+### Historical authentication and authorization
+
+At that commit, `src/lib/auth-server.ts` implemented server-side sessions. It generated a random
+256-bit token, stored only its SHA-256 hash in `sessions.token_hash`, and set the `cc_session` cookie
+with `httpOnly`, `sameSite: "lax"`, `path: "/"`, seven-day expiry and `secure` in production.
+It exposed session creation/destruction, current-user lookup, `requireUser`, `unauthorized`, `forbidden`
+and manager-role helpers. Expired sessions were cleaned up on login.
+
+`src/lib/password.ts` used `bcryptjs` cost 10 and a minimum password length of 8. `src/lib/roles.ts`
+defined `case_worker`, `senior_case_worker` and `admin`; senior case workers and admins could manage.
+Signup created `case_worker` accounts and rejected the demo email. The optional demo account
+(`demo@caseclarity.ai` / `demo1234`, `senior_case_worker`, `Northside Legal Aid`) was created on demand
+only when `DEMO_ACCOUNT` enabled it. The auth route used atomic rate-limit reservations and refunds for successful attempts. Its historical
+limits were 30 failed attempts per email, 10 per email+IP, and 50 per IP per 15-minute window; signup
+was limited to 10 per IP per hour or 200 globally. Throttling returned `Retry-After`; signup required
+8–200 characters and login/signup inputs were bounded. These are historical code facts, not assurances
+about the current demo or a future deployment.
+
+### Historical API routes
+
+The individually listed endpoint paths below were present at `34dd6c0`; they are **not** the three
+routes exposed by the current demo at baseline commit `f236509`. Each route and method is listed from
+its historical source; no aggregate endpoint count is needed here. All case-data routes called
+`requireUser()` and returned `401` when unauthenticated, except the explicitly public endpoints listed
+below.
+
+| Endpoint | Methods | Historical behavior and access |
+|---|---|---|
+| `/api/auth` | GET, POST | Public session lookup; POST login, signup or logout. Sets/destroys the server session cookie. |
+| `/api/health` | GET | Public `select 1` database check; returns 200 `{ok:true}` or 500 `{ok:false}`. |
+| `/api/config` | GET | Public AI mode/model and demo-account configuration; no secret returned. |
+| `/api/cases` | GET, POST | Authenticated list/create; POST also accepted bulk CSV import up to 500 rows with deduplication. |
+| `/api/cases/[id]` | PATCH, DELETE | Authenticated updates; DELETE restricted to manager roles. |
+| `/api/documents` | GET, POST | Authenticated document listing/creation. |
+| `/api/extract` | POST | Authenticated file extraction; 10 MB limit, 413 over limit, 415 unsupported type, 422 unreadable file. |
+| `/api/extractions` | GET, POST, DELETE | Authenticated extraction listing, creation and deletion. |
+| `/api/recommendations` | GET, POST | Authenticated recommendation listing and creation. |
+| `/api/recommendations/[id]` | PATCH | Authenticated review/update; 409 when already locked. |
+| `/api/audit` | GET, POST | Authenticated audit listing and event creation. |
+| `/api/analyze` | POST | Authenticated analysis; LLM HTTP errors or invalid JSON fell back to `{mode:"demo"}`, otherwise `{mode:"llm"}`. |
+| `/api/seed` | POST | Manager-only; 403 when demo mode disabled and guarded against reseeding. |
+
+In the historical source, manager-only operations included case deletion and seeding; the session,
+password, rate-limit and authorization implementation was in server-side libraries, not the browser
+store. This historical API list does not imply these endpoints, protections or database are available
+in the current demo.
 
 ## Data storage
 
-| Data | Where it lives | Detail |
+### Current IndexedDB demo
+
+| Data | Current location | Detail |
 |---|---|---|
-| Original uploaded files | **Nowhere** | Read into memory in the browser for text extraction, then discarded. Files are never uploaded and never persisted. |
-| Documents and extracted text | **Browser IndexedDB** | Key `workspace` → `docs[]`. Pages are joined with `\f` so page numbers survive. |
-| Facts and extractions | **Browser IndexedDB** | `workspace.extractions[]` — documentId, source document, page, snippet, confidence, category, `verified`. |
-| Recommendations and review decisions | **Browser IndexedDB** | `workspace.recs[]` — evidence, contradictions, status, reviewer, comment, engine. |
-| AI document summaries and highlights | **Browser IndexedDB** | `workspace.summaries[]`, written only by the Live AI path. |
-| Audit trail | **Browser IndexedDB** | `workspace.audit[]`, newest first; deletions keep history and unlink the case. |
-| Local accounts | **Browser IndexedDB** | Key `accounts` — email, role, org and a bcrypt hash. The password is never stored. |
-| Signed-in session | **Browser IndexedDB** | Key `session` → `{ userId }`. |
-| Server-side data | **None** | Route handlers are stateless and keep nothing between requests. |
-| Relational database | **None in this version** | No Cloudflare D1 binding, no `db/` schema, no PostgreSQL, no migrations. |
+| Original uploaded files | Nowhere after extraction | Read in browser memory; originals are neither uploaded nor persisted. |
+| Documents and extracted text | Browser IndexedDB | Key `workspace` → `docs[]`; pages are joined with `\f` to preserve page boundaries. |
+| Facts and extractions | Browser IndexedDB | `workspace.extractions[]` with source document, page, snippet, confidence, category and verification flag. |
+| Recommendations and review decisions | Browser IndexedDB | `workspace.recs[]` with evidence, contradictions, status, reviewer, comment and engine. |
+| AI document summaries and highlights | Browser IndexedDB | `workspace.summaries[]`, created by Live AI. |
+| Audit trail | Browser IndexedDB | `workspace.audit[]`; deletions keep history and unlink the case. |
+| Local accounts | Browser IndexedDB | `accounts` key includes email, role, org and bcrypt hash; the password is not stored. |
+| Signed-in session | Browser IndexedDB | `session` key stores `{ userId }`; this is not a server-authenticated session. |
+| Server-side persistence | None | Current routes do not store workspace state. |
+| PostgreSQL / Hyperdrive | None in current tree | No `src/db/`, database driver, database binding or Hyperdrive configuration. |
 
 **Implementation notes** (`src/lib/browser-db.ts`, `src/lib/workspace.ts`):
 
-- Single IndexedDB database `caseclarity-ai` with one object store, `kv`; the workspace is versioned
-  (`WORKSPACE_VERSION = 2`) and an older or unreadable copy is replaced by the seeded demo dataset.
-- Every storage call resolves instead of throwing. In a private window or with site data blocked, the app
-  keeps working in memory and warns that changes will be lost on reload.
-- *Reset demo data* (senior caseworkers only) restores `src/data/demo-data.ts` and appends a
-  `Demo data reset` audit entry.
-- Each browser profile and device has its own workspace. Clearing site data starts again from the demo
-  data. Two open tabs each save their own copy; the last write wins.
-- The workspace is **not partitioned per account**: every account used in the same browser sees the same
-  cases and audit trail. Sign-in decides who is recorded as the actor, not which data you can see.
-- First visit seeds the fictional dataset: 6 cases, 19 documents, 20 curated facts, 6 sample
-  recommendations and 14 audit events.
+- IndexedDB database `caseclarity-ai` has one object store, `kv`; the workspace is versioned
+  (`WORKSPACE_VERSION = 2`). An older or unreadable copy is replaced with the seeded demo dataset.
+- Storage calls resolve rather than throw. In a private window or with site data blocked, the app keeps
+  working in memory and warns that changes will be lost on reload.
+- *Reset demo data* restores `src/data/demo-data.ts` and appends a reset event to the local audit trail.
+- Each browser profile/device has its own workspace. Clearing site data restores the seed; separate tabs
+  can overwrite each other (last write wins).
+- The workspace is not partitioned by local account: accounts in one browser see the same cases and audit
+  trail. Sign-in identifies the actor but does not isolate data.
+- First visit seeds six fictional cases, 19 documents, 20 curated facts, six sample recommendations and
+  14 audit events.
 
-Live AI summaries are therefore private to the visitor who generated them. There is no D1 database and
-no `/api/summaries` route in this codebase: if you are looking for a server-side summaries store, it does
-not exist here.
+### Intended server-side persistence
+
+When server-side persistence returns, data will no longer be confined to the visitor's browser. The
+intended architecture is a shared PostgreSQL-backed workspace, using the verified seven-table schema at
+[`34dd6c0`](#historical-postgresql-implementation-commit-34dd6c0) as the reference and Cloudflare
+Hyperdrive as the planned connection layer. This is **not implemented**: there is no database or
+Hyperdrive binding, no current database schema, and no live server-side data store. Retention, tenancy,
+backup, deletion and operational policies must be designed and documented before production use.
+
+The historical schema mapped users, cases, documents, extractions, recommendations, sessions and audit
+logs to relational records. It does not mean that current demo data is uploaded or synchronized. There
+is no `/api/summaries` route in the current codebase.
 
 ## API reference
 
-Three stateless routes, all under `src/app/api/`. All responses are JSON. No endpoint stores anything.
+### Current demo API
+
+The current demo at baseline commit `f236509` exposes three stateless routes under `src/app/api/`.
+They return JSON and do not persist case data. They are separate from the authenticated PostgreSQL API
+documented in the historical section above.
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| `GET` | `/api/health` | Liveness probe |
-| `GET` | `/api/config` | Non-secret runtime flags so the UI can label itself honestly |
-| `POST` | `/api/analyze` | Live AI analysis of a case's extracted text, with citation verification |
+| `GET` | `/api/health` | Liveness probe; no database check. |
+| `GET` | `/api/config` | Non-secret runtime AI mode/model for UI labeling. |
+| `POST` | `/api/analyze` | Live AI analysis of submitted case fields and extracted text; citations are checked server-side. |
 
-### `GET /api/health`
-
-Returns `200` with `{"ok": true}`. There is no database to check.
-
-### `GET /api/config`
-
-Returns the active AI mode:
-
-```json
-{ "aiMode": "demo", "model": null }
-```
-
-`aiMode` is `"llm"` when `LLM_API_KEY` is configured, otherwise `"demo"`; `model` is the configured
-model name in Live AI mode and `null` in Demo Mode. No secret is ever included.
+`GET /api/health` returns `200` with `{"ok": true}`. `GET /api/config` returns the active AI mode, for
+example `{ "aiMode": "demo", "model": null }`. `aiMode` is `"llm"` when `LLM_API_KEY` is configured,
+otherwise `"demo"`; no secret is returned. Neither route checks PostgreSQL because the current demo
+has no database.
 
 ### `POST /api/analyze`
 
-**Request**
+#### Request
 
 ```json
 {
@@ -409,7 +566,7 @@ model name in Live AI mode and `null` in Demo Mode. No secret is ever included.
 ```
 
 The browser trims documents to a 60,000-character prompt budget, sends at most 50 documents, and sends
-only the case fields listed above — never the workspace, the audit trail or the accounts.
+only the case fields listed above—not the workspace, audit trail or accounts.
 
 **Response — Live AI (`200`)**
 
@@ -431,8 +588,9 @@ only the case fields listed above — never the workspace, the audit trail or th
 }
 ```
 
-`model` is the model that actually answered; `primaryModel` is always the configured primary, so the
-audit trail can show when a fallback stood in.
+This is an illustrative response shape; the model fields reflect configured values and do not assert
+which model, if any, is live. `model` is the model that answered; `primaryModel` is the configured
+primary, so the audit trail can show when a fallback model answered.
 
 **Response — fallback (`200`)**
 
@@ -440,25 +598,26 @@ audit trail can show when a fallback stood in.
 { "mode": "demo", "reason": "No LLM_API_KEY configured — using the local demo engine." }
 ```
 
-Returned when no key is configured, when the provider errors or times out, when the response is not
-valid JSON, or when the output fails validation. The browser then runs its local demo engine, and the
-audit entry names the reason.
+The route returns `mode: "demo"` when no key is configured, the provider errors or times out, the
+response is invalid JSON, or output validation fails. The browser then runs the local demo engine and
+records the reason.
 
-**Errors**
+#### Errors
 
-| Status | When | Body |
+| Status | When | Response body / headers |
 |---|---|---|
 | `400` | No usable document in the request | `{"error": "Upload at least one document first"}` |
 | `403` | Cross-site browser request (Origin or `Sec-Fetch-Site` mismatch) | `{"error": "Cross-site request blocked"}` |
-| `413` | Declared body over ~1.2 MB, or documents whose text exceeds 600,000 characters | `{"error": "Request too large"}` / `{"error": "Documents are too large to analyze"}` |
-| `429` | More than 10 Live AI analyses per minute for one visitor | `{"error": "Too many AI analyses..."}` with `Retry-After: 60` |
+| `413` | Declared body exceeds approximately 1.2 MB | `{"error": "Request too large"}` |
+| `413` | Total extracted document text exceeds 600,000 characters | `{"error": "Documents are too large to analyze"}` |
+| `429` | More than 10 Live AI analyses per minute for one visitor | `{"error": "Too many AI analyses from your connection. Wait a minute and try again."}`; `Retry-After: 60` |
 
-**Access control.** The route blocks cross-site browser requests (a CSRF guard), and on Cloudflare a
-rate-limit binding caps each visitor at 10 Live AI analyses per minute. There is no user authentication
-on the API: anyone who can open the deployment can call it, which is why a spending cap on the provider
-key is recommended. Locally the limiter is absent and requests are allowed.
+**Access control.** The route blocks cross-site browser requests and, on Cloudflare, uses a rate-limit
+binding for 10 Live AI analyses per minute per visitor. These controls are not user authentication:
+anyone who can access a public deployment can call the endpoint. A provider spending limit is prudent.
+The local limiter is absent during local development.
 
-**Configuration.** Request timeouts, transient-fault retries and a fallback model chain are handled in
+**Configuration.** Request timeouts, transient-fault retries and model fallback are handled in
 `postChatCompletion()`; see [Environment variables](#environment-variables).
 
 ## Local setup
@@ -506,27 +665,38 @@ npm run preview:cloudflare  # run the built Worker locally with Vite preview
 For the local Worker preview, copy `.dev.vars.example` to `.dev.vars` (gitignored) if you want Live AI;
 leave `LLM_API_KEY` empty to stay in Demo Mode.
 
-### Deploying to Cloudflare
+### Deploying the current demo to Cloudflare
 
-Deployment is **manual, never on push**. Two supported paths:
+The repository includes a **manual deployment workflow** (`workflow_dispatch`) and `npm run deploy`.
+These describe a deployment procedure; their presence does **not** prove that a Worker currently exists,
+is reachable, or is running this revision. The workflow targets a Worker named `caseclarity-ai` and
+requires Cloudflare credentials and an LLM key when it writes secrets. No database or Hyperdrive setup
+is part of that workflow.
 
 ```bash
-# From your machine: authenticate once, then deploy the existing Worker
+# From your machine; requires your own Cloudflare account and authorization
 npx cf auth login
 npm run deploy
 ```
 
-or dispatch the **Deploy to Cloudflare Workers** workflow (`workflow_dispatch`) with an optional git ref
-and a `stage-only` toggle. The workflow:
+Or dispatch the **Deploy to Cloudflare Workers** workflow (`workflow_dispatch`) with an optional git ref
+and a `stage-only` toggle. According to `.github/workflows/deploy-cloudflare.yml`, the workflow:
 
-1. checks out the requested ref,
-2. runs `npm test`, `npm run typecheck` and `npm run lint` as a gate,
-3. fails fast if `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` or `LLM_API_KEY` is missing,
-4. writes the `LLM_*` Worker secrets, lists them to confirm the write, then deploys.
+1. checks out the requested ref (or the dispatching ref when none is specified),
+2. runs `npm test`, `npm run typecheck` and `npm run lint` as deployment gates,
+3. when its `set-secrets` option is enabled, checks for `CLOUDFLARE_API_TOKEN`,
+   `CLOUDFLARE_ACCOUNT_ID` and `LLM_API_KEY`, then writes and lists the configured Worker secrets,
+4. builds and deploys the Worker named in `cloudflare.config.ts`; `stage-only` uploads a version without
+   promoting it to receive traffic.
 
-The Worker is updated in place under the name `caseclarity-ai`; re-dispatching with an earlier commit SHA
-rolls back. A declared secret is required at deploy time, so a Worker can never silently deploy without
-the AI configuration it expects. Demo Mode is unaffected by any provider failure.
+The workflow is configured to update the named Worker in place; dispatching it with an earlier commit
+SHA is the documented rollback procedure, subject to valid account access and configuration. These
+steps describe repository workflow logic, not proof that the needed account resources or credentials
+exist, that a workflow succeeded, or that a live deployment is present. For deployment
+verification, inspect the workflow result, test the actual endpoint (`/api/health` and `/api/config`),
+and confirm the deployed revision through the applicable Cloudflare account tooling. This repository
+does not assert current availability, deployment revision, live AI provider or production
+infrastructure. The demo's `/api/health` is only a liveness response; it does not test PostgreSQL.
 
 ### Scripts
 
@@ -537,7 +707,7 @@ the AI configuration it expects. Demo Mode is unaffected by any provider failure
 | `npm run dev:cloudflare` | vinext dev server on port 3001 with the Workers runtime |
 | `npm run build:cloudflare` | Build the Cloudflare Worker |
 | `npm run preview:cloudflare` | Serve the built Worker locally |
-| `npm run deploy` | Build and deploy to the existing Cloudflare Worker |
+| `npm run deploy` | Build and attempt deployment to the Worker named in the repository configuration (requires external Cloudflare setup) |
 | `npm test` | Vitest unit test suite |
 | `npm run typecheck` | `next typegen && tsc --noEmit` |
 | `npm run lint` | ESLint over the repository |
@@ -588,37 +758,36 @@ LLM_FALLBACK_MODELS=
 
 ### Where each runtime reads them
 
-| Runtime | Source |
+| Runtime | Current demo source |
 |---|---|
 | `npm run dev` (Next.js) | `.env` (copy `.env.example`) |
 | Local Worker preview | `.dev.vars` (copy `.dev.vars.example`) |
-| Deployed Worker | Worker secrets. `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL` and `LLM_TIMEOUT_MS` are declared as secrets in `cloudflare.config.ts` and written by the deploy workflow; `LLM_FALLBACK_MODELS` is a plain-text binding. |
+| Worker deploy workflow | Workflow environment plus configured Worker bindings/secrets in `cloudflare.config.ts`; these are not proof that a live Worker is configured. |
 
 The retry knobs (`LLM_MAX_ATTEMPTS`, `LLM_RETRY_BASE_DELAY_MS`) are not declared bindings on the Worker,
-so the deployed defaults apply there unless you add them to `cloudflare.config.ts`.
+so Worker defaults apply unless the configuration is changed.
 
 **Never commit `.env` or `.dev.vars`** — both are gitignored. The key is read server-side only
-(`src/lib/server-config.ts`, the only file that reads `process.env`); nothing sensitive uses
-`NEXT_PUBLIC_*`, and the browser learns only the mode and the model name from `GET /api/config`.
+(`src/lib/server-config.ts`, the only current file that reads `process.env`); nothing sensitive uses
+`NEXT_PUBLIC_*`, and the browser learns only the mode and model name from `GET /api/config`.
 
-### What is actually deployed
+### Repository deployment configuration (not live-state verification)
 
-The repository supports several configurations, so be precise about which one is which:
-
-| | Value | Source of truth |
+| What source/config says | Value | What it does not establish |
 |---|---|---|
-| **Intended deployment configuration** | Google Gemini `gemini-3.8-flash` via `https://generativelanguage.googleapis.com/v1beta/openai/`, 90 s timeout | `.github/workflows/deploy-cloudflare.yml` |
-| **Code default when no `LLM_*` variables are set** | `gpt-4o-mini` at `https://api.openai.com/v1` | `src/lib/server-config.ts`, `.env.example` |
-| **Actual production runtime** | Not determinable from the repository. `GET /api/config` on the deployment reports the live mode and model; check it rather than assuming Gemini is active. | — |
+| Deploy workflow's intended LLM settings | Gemini `gemini-3.8-flash` via `https://generativelanguage.googleapis.com/v1beta/openai/`, 90 s timeout | Whether credentials exist, the workflow has succeeded, or this configuration is live |
+| Code defaults without `LLM_*` | `gpt-4o-mini` at `https://api.openai.com/v1` | Which provider or model any deployed Worker actually uses |
+| Actual live deployment | **Not verified by this README or source inspection** | Check workflow execution and the deployed endpoint/account directly; `/api/config` reports its runtime mode/model only if reachable |
 
 ## Testing and code quality
 
-**Verified on 2026-11-21** against commit `4648561`:
+**Recorded verification (2026-11-21, commit `4648561`)**:
 `npm test` → **112/112 passing in 11 files**; `npm run typecheck` → pass; `npm run lint` → pass;
-`npm run build:cloudflare` → pass. The latest CI runs on `main` are green.
+`npm run build:cloudflare` → pass. This is a dated result for that commit, not a claim that the current
+branch or latest CI run has passed.
 
 `npm run build` was not executed in that verification environment because it fetches the Geist font from
-Google Fonts; CI runs it on every push.
+Google Fonts. CI is configured to run it, but this README does not assert a current CI result.
 
 ### The suite
 
@@ -669,29 +838,37 @@ with your own key before relying on it.
 
 ## Security, privacy and responsible AI
 
-### Privacy
+### Privacy and data handling
 
-- **Original files are processed in the browser** (`unpdf`/PDF.js and `mammoth`), never uploaded.
-- **Only extracted text is kept**, in the visitor's own IndexedDB.
-- **Extracted text leaves the browser only for Live AI**, when a key is configured: the case's document
-  text goes to `/api/analyze` and then to the configured provider for that request. In Demo Mode no
-  document text or case data leaves the browser.
-- **API keys stay server-side.** `src/lib/server-config.ts` is the only place `process.env` is read;
-  provider error bodies are never echoed, because they can contain fragments of the key.
-- **Case data is browser-local.** There is no server-side session, no shared workspace and no database.
-- **No real client data should be uploaded.** The demo accounts, cases, documents and metrics are
-  fictional; the sign-up screen repeats this warning.
+- **Browser-local privacy describes only the current demo.** In Demo Mode, case data is stored in each
+  visitor's IndexedDB and is not sent to this app's server. This is not a secure vault: anyone with
+  access to the browser profile/device can inspect it, and clearing browser data can erase it.
+- **Original files are processed in the browser** (`unpdf`/PDF.js and `mammoth`) and are not uploaded by
+  the current demo. Extracted text stays in IndexedDB except for the Live AI flow.
+- **Live AI transmits data.** When enabled, the case fields and extracted document text for that analysis
+  are sent to `/api/analyze` and then to the configured AI provider. Review the provider's retention and
+  privacy terms before sending any data.
+- **Privacy will change when server-side persistence returns.** PostgreSQL-backed persistence means
+  data will leave individual browsers and be stored server-side for a shared workspace. The exact
+  hosting, access controls, tenant isolation, retention/deletion, backups, encryption, incident response
+  and provider data-flow policies are not implemented or defined by this repository. Do not use real
+  client or sensitive case data until those controls are implemented, reviewed and communicated.
+- **API keys stay server-side in the current code.** `src/lib/server-config.ts` is the only current file
+  reading `process.env`; provider error bodies are not echoed because they can contain key fragments.
+- All data in the public demo dataset (accounts, cases, documents and metrics) is fictional.
 
 ### Authentication and access
 
-- Accounts are a **demo convenience**, not production authentication. They live in the browser, anyone
-  with access to that browser profile can read its storage, and there is no server to enforce identity.
-  Sign-in exists so the audit trail can attribute actions to a person.
-- The API has **no user authentication**. `/api/analyze` is protected by a same-origin check and, on
-  Cloudflare, a 10-per-minute-per-visitor rate limit. A public deployment with a real key should sit
-  behind Cloudflare Access or a spending cap.
-- The audit trail is append-only **by application convention** (`appendAudit()` only prepends). It is not
-  cryptographically sealed or server-enforced.
+- Current demo accounts are a **demo convenience**, stored in browser IndexedDB. The current API has
+  **no user authentication or server-side authorization**; local role checks are not a security boundary.
+- `/api/analyze` has a same-origin request check and, on Cloudflare, a 10-per-minute-per-visitor rate
+  limit. These controls do not authenticate users. Any public deployment should be reviewed for access
+  controls, abuse limits and provider spending exposure.
+- The current audit trail is append-only by application convention (`appendAudit()` only prepends), not
+  cryptographically sealed or server-enforced; browser data can be changed or cleared.
+- The historical `34dd6c0` implementation did have server-side bcrypt accounts, hashed-token sessions
+  in PostgreSQL, authenticated data routes and role checks. Those protections are **not** in the current
+  demo. They must be restored and reviewed—not assumed—before the intended production backend is used.
 
 ### Responsible AI
 
@@ -709,18 +886,21 @@ with your own key before relying on it.
 
 ## Limitations and future work
 
-### Current limitations
+### Current demo limitations
 
 | Area | Limitation |
 |---|---|
-| Persistence | Per browser and per device. No shared workspace, no cross-device access; clearing site data resets to the demo dataset. Two tabs can overwrite each other. |
-| Identity | Browser-local accounts are not a security boundary; no password reset, no organisations, no admin console. |
-| Live AI | Not validated against a real provider from the development environment; unprotected on a public deployment apart from the rate limit. |
-| Extraction | No OCR, so scanned or image-only PDFs yield no text. No legacy `.doc`. Only PDFs have real page numbers; DOCX/TXT/CSV/MD pages are estimated at ~1,800 characters. |
-| Data retention | Original files are deliberately not stored, so a fact cannot be re-read from the file inside the app; extracted text is what remains. |
-| Demo engine | Simple, deterministic heuristics. Running an analysis on a seeded case can produce different text from its curated sample recommendation. |
-| Audit | Append-only by convention only; not tamper-evident, and any browser storage can be cleared. |
-| Evaluation | The metrics on `/evaluation` are illustrative placeholders. No user study or benchmark has been run. |
+| Persistence | Per browser/device only. No shared workspace or cross-device access; clearing site data resets to demo data; tabs can overwrite each other. |
+| Intended production backend | PostgreSQL is absent from the current tree. The historical schema/API are references, not an active service; no Hyperdrive binding, database credentials, deployment or migration exists here. |
+| Identity | Browser-local accounts and role checks are not a security boundary. No password reset, organization administration or server-side authorization in the current demo. |
+| Live AI | Not validated against a real provider from the development environment; current endpoint has no user authentication. |
+| Privacy / retention | Browser-local storage is limited to this demo. Server-side persistence will change data flows and requires explicit tenant, retention, deletion, backup and privacy controls. |
+| Extraction | No OCR for scanned/image PDFs and no legacy `.doc`; only PDFs have real page numbers; DOCX/TXT/CSV/MD pages are estimated at ~1,800 characters. |
+| Data retention | Original files are not stored. Extracted text remains in browser storage and may be cleared by the visitor. |
+| Demo engine | Deterministic heuristics; a fresh analysis can differ from a curated sample recommendation. |
+| Audit | Append-only by convention only; not tamper-evident and browser data can be altered or cleared. |
+| Evaluation | `/evaluation` metrics are illustrative. No user study or benchmark has been run. |
+| Deployment verification | Workflow/config files describe a manual deployment path but do not establish that a live Worker, database or current deployed revision exists. |
 | Toolchain | vinext targets Next.js 16 without a full parity guarantee; `@cloudflare/vite-plugin` 2.0 and `cf` are release candidates. |
 | Tests | Unit and route tests only. The scripted browser walkthrough is not committed to the repository. |
 
@@ -728,13 +908,16 @@ with your own key before relying on it.
 
 | Priority | Item |
 |---|---|
-| Next | Add OCR (scanned PDFs, photos) and legacy `.doc` support; keep an optional encrypted copy of the original file |
-| Next | Protect the public Live AI deployment (Cloudflare Access or an auth proxy) and add per-organisation quotas |
-| Next | Run the timed caseworker study and extraction benchmark, then replace the placeholder evaluation numbers with measured results |
-| Later | Shared workspace: server-side storage and sessions, with `src/lib/workspace.ts` reused as the rule layer (Cloudflare D1 or PostgreSQL) |
-| Later | Real Google Drive integration (OAuth 2.0 + Drive API) and a CSV column-mapping step |
-| Later | Commit the end-to-end browser walkthrough as Playwright tests in CI |
-| Later | Server-enforced, tamper-evident audit log; content-based document classification; first-class contradiction records across analyses |
+| **Production prerequisite** | Restore the verified PostgreSQL/Drizzle schema and authenticated API based on `34dd6c0`; add and review current migrations and a safe schema deployment process. |
+| **Production prerequisite** | Integrate PostgreSQL with Cloudflare Workers through a configured Cloudflare Hyperdrive binding; provision infrastructure and secrets outside the repository without committing credentials. |
+| **Production prerequisite** | Restore server-side sessions and authorization, then implement tenant isolation, validation, rate limits, secure secret handling, privacy/retention/deletion policy, backups and operational monitoring. |
+| **Production prerequisite** | Add integration tests against PostgreSQL and verify deploy health, database connectivity and runtime configuration; do not treat the demo `/api/health` as a database check. |
+| Next | Protect Live AI with appropriate access controls and per-organization quotas; document AI-provider data handling. |
+| Next | Add OCR (scanned PDFs, photos) and legacy `.doc` support; decide whether originals should be retained, and under what encryption/retention policy. |
+| Next | Run the timed caseworker study and extraction benchmark, then replace illustrative evaluation numbers with measured results. |
+| Later | Real Google Drive integration (OAuth 2.0 + Drive API) and a CSV column-mapping step. |
+| Later | Commit the end-to-end browser walkthrough as Playwright tests in CI. |
+| Later | Server-enforced, tamper-evident audit log; content-based document classification; first-class contradiction records across analyses. |
 
 ## Project structure
 
